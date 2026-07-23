@@ -1,0 +1,30 @@
+services:
+  backend:
+    build: ./backend
+    container_name: mikrotik-backend
+    restart: unless-stopped
+    volumes:
+      - db-data:/app/data
+    environment:
+      - JWT_SECRET=${JWT_SECRET:-supersecretkey123changeme}
+    networks:
+      - app-network
+
+  frontend:
+    build: ./frontend
+    container_name: mikrotik-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+volumes:
+  db-data:
+    driver: local
+
+networks:
+  app-network:
+    driver: bridge
