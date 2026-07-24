@@ -295,31 +295,40 @@ def ppp_active_with_interfaces(user_id: int | None = None, router_id: int | None
     with ros_api(user_id, router_id) as api:
         rows = list(_path(api, "ppp", "active"))
         
-        iface_map = {}
+        all_ifaces = list(_path(api, "interface"))
+        ppp_type_ifaces = [
+            iface for iface in all_ifaces 
+            if iface.get("type") in ("pppoe-out", "pppoe-in", "pptp-out", "pptp-in", "l2tp-out", "l2tp-in", "sstp-out", "sstp-in")
+        ]
+        
+        ip_addresses = {}
         try:
-            all_ifaces = list(_path(api, "interface"))
-            for iface in all_ifaces:
-                iface_type = iface.get("type", "")
-                iface_name = iface.get("name", "")
-                
-                if iface_type in ("pppoe-out", "pppoe-in", "pptp-out", "pptp-in", "l2tp-out", "l2tp-in", "sstp-out", "sstp-in"):
-                    for username_candidate in [name.strip("<>") for name in [iface_name]]:
-                        if username_candidate:
-                            iface_map[username_candidate] = iface_name
-                    
-                    if "<" in iface_name and ">" in iface_name:
-                        extracted = iface_name.split("<")[-1].split(">")[0]
-                        if extracted.startswith(("pppoe-", "pptp-", "l2tp-", "sstp-")):
-                            extracted = extracted.split("-", 1)[-1]
-                        if extracted:
-                            iface_map[extracted] = iface_name
+            ip_address_list = list(_path(api, "ip", "address"))
+            for ip_entry in ip_address_list:
+                iface = ip_entry.get("interface")
+                addr = ip_entry.get("address", "")
+                if iface and addr:
+                    ip_without_mask = addr.split("/")[0] if "/" in addr else addr
+                    ip_addresses[ip_without_mask] = iface
         except Exception:
             pass
         
         result = []
         for r in rows:
             username = r.get("name")
-            iface_name = iface_map.get(username) if username else None
+            session_address = r.get("address")
+            iface_name = None
+            
+            if session_address and session_address in ip_addresses:
+                iface_name = ip_addresses[session_address]
+            
+            if not iface_name:
+                for iface in ppp_type_ifaces:
+                    iface_full_name = iface.get("name", "")
+                    
+                    if username and username in iface_full_name:
+                        iface_name = iface_full_name
+                        break
             
             if not iface_name and username:
                 iface_name = f"<pppoe-{username}>"
@@ -327,7 +336,7 @@ def ppp_active_with_interfaces(user_id: int | None = None, router_id: int | None
             result.append({
                 "name": username,
                 "service": r.get("service"),
-                "address": r.get("address"),
+                "address": session_address,
                 "uptime": r.get("uptime"),
                 "caller_id": r.get("caller-id"),
                 "interface": iface_name,
@@ -337,31 +346,31 @@ def ppp_active_with_interfaces(user_id: int | None = None, router_id: int | None
 
 
 def monitor_ppp_traffic(ifaces: list[str], user_id: int | None = None, router_id: int | None = None) -> dict[str, dict[str, int]]:
-    """Monitor traffic for a list of PPPoE interfaces in a single API call.
-
+    """Monitor traffic for a list of PPPoE interfaces.
+    
     Returns a dict mapping interface name → {rx_bps, tx_bps}.
     Falls back to zero values if an interface is not found or errors.
     """
     if not ifaces:
         return {}
-    result: dict[str, dict[str, int]] = {iface: {"rx_bps": 0, "tx_bps": 0} for iface in ifaces}
-    try:
-        with ros_api(user_id, router_id) as api:
-            # Join all interface names with comma for a single batch call
-            iface_list = ",".join(ifaces)
-            cmd = api.rawCmd(
-                "/interface/monitor-traffic",
-                f"=interface={iface_list}",
-                "=once=",
-            )
-            idx = 0
-            for row in cmd:
-                if idx < len(ifaces):
-                    result[ifaces[idx]] = {
+    
+    result: dict[str, dict[str, int]] = {}
+    
+    with ros_api(user_id, router_id) as api:
+        for iface in ifaces:
+            try:
+                cmd = api.rawCmd(
+                    "/interface/monitor-traffic",
+                    f"=interface={iface}",
+                    "=once=",
+                )
+                for row in cmd:
+                    result[iface] = {
                         "rx_bps": int(row.get("rx-bits-per-second", 0) or 0),
                         "tx_bps": int(row.get("tx-bits-per-second", 0) or 0),
                     }
-                    idx += 1
-    except Exception:
-        pass
+                    break
+            except Exception:
+                result[iface] = {"rx_bps": 0, "tx_bps": 0}
+    
     return result
