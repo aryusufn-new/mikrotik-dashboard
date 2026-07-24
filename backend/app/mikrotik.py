@@ -294,17 +294,46 @@ def ppp_active_with_interfaces(user_id: int | None = None, router_id: int | None
     """Get active PPPoE sessions including their dynamically assigned interface name."""
     with ros_api(user_id, router_id) as api:
         rows = list(_path(api, "ppp", "active"))
-        return [
-            {
-                "name": r.get("name"),
+        
+        iface_map = {}
+        try:
+            all_ifaces = list(_path(api, "interface"))
+            for iface in all_ifaces:
+                iface_type = iface.get("type", "")
+                iface_name = iface.get("name", "")
+                
+                if iface_type in ("pppoe-out", "pppoe-in", "pptp-out", "pptp-in", "l2tp-out", "l2tp-in", "sstp-out", "sstp-in"):
+                    for username_candidate in [name.strip("<>") for name in [iface_name]]:
+                        if username_candidate:
+                            iface_map[username_candidate] = iface_name
+                    
+                    if "<" in iface_name and ">" in iface_name:
+                        extracted = iface_name.split("<")[-1].split(">")[0]
+                        if extracted.startswith(("pppoe-", "pptp-", "l2tp-", "sstp-")):
+                            extracted = extracted.split("-", 1)[-1]
+                        if extracted:
+                            iface_map[extracted] = iface_name
+        except Exception:
+            pass
+        
+        result = []
+        for r in rows:
+            username = r.get("name")
+            iface_name = iface_map.get(username) if username else None
+            
+            if not iface_name and username:
+                iface_name = f"<pppoe-{username}>"
+            
+            result.append({
+                "name": username,
                 "service": r.get("service"),
                 "address": r.get("address"),
                 "uptime": r.get("uptime"),
                 "caller_id": r.get("caller-id"),
-                "interface": f"<pppoe-{r.get('name')}>" if r.get("name") else None,  # Constructed dynamically e.g. <pppoe-user>
-            }
-            for r in rows
-        ]
+                "interface": iface_name,
+            })
+        
+        return result
 
 
 def monitor_ppp_traffic(ifaces: list[str], user_id: int | None = None, router_id: int | None = None) -> dict[str, dict[str, int]]:
