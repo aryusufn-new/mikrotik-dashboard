@@ -48,12 +48,11 @@ async def ws_traffic(websocket: WebSocket):
         return
     await websocket.accept()
     router_id = _get_router_id_from_ws(websocket)
-    cfg_mod.set_active_user(user["id"], router_id)
     iface = websocket.query_params.get("iface", "ether1")
     try:
         while True:
             try:
-                data = await asyncio.to_thread(mikrotik.monitor_traffic_once, iface)
+                data = await asyncio.to_thread(mikrotik.monitor_traffic_once, iface, user["id"], router_id)
             except Exception as e:
                 await websocket.send_json({"error": str(e)})
                 await asyncio.sleep(2)
@@ -78,13 +77,12 @@ async def ws_interfaces_traffic(websocket: WebSocket):
         return
     await websocket.accept()
     router_id = _get_router_id_from_ws(websocket)
-    cfg_mod.set_active_user(user["id"], router_id)
     prev_counters: dict[str, tuple[int, int]] = {}
     prev_ts: float | None = None
     try:
         while True:
             try:
-                rows = await asyncio.to_thread(mikrotik.list_interfaces)
+                rows = await asyncio.to_thread(mikrotik.list_interfaces, user["id"], router_id)
             except Exception as e:
                 await websocket.send_json({"error": str(e)})
                 await asyncio.sleep(2)
@@ -161,12 +159,11 @@ async def ws_ppp_traffic(websocket: WebSocket):
         return
     await websocket.accept()
     router_id = _get_router_id_from_ws(websocket)
-    cfg_mod.set_active_user(user["id"], router_id)
     try:
         while True:
             try:
                 # Fetch active PPPoE sessions with their interface names
-                active_sessions = await asyncio.to_thread(mikrotik.ppp_active_with_interfaces)
+                active_sessions = await asyncio.to_thread(mikrotik.ppp_active_with_interfaces, user["id"], router_id)
 
                 # Build mapping: interface_name → session info
                 iface_to_session: dict[str, dict] = {}
@@ -180,7 +177,7 @@ async def ws_ppp_traffic(websocket: WebSocket):
                 # Batch-fetch traffic for all active PPPoE interfaces
                 traffic_map: dict[str, dict] = {}
                 if ifaces:
-                    traffic_map = await asyncio.to_thread(mikrotik.monitor_ppp_traffic, ifaces)
+                    traffic_map = await asyncio.to_thread(mikrotik.monitor_ppp_traffic, ifaces, user["id"], router_id)
 
                 # Merge traffic data into per-user payload
                 users_payload: dict[str, dict] = {}
@@ -223,14 +220,13 @@ async def ws_hotspot_traffic(websocket: WebSocket):
         return
     await websocket.accept()
     router_id = _get_router_id_from_ws(websocket)
-    cfg_mod.set_active_user(user["id"], router_id)
     prev_counters: dict[str, tuple[int, int]] = {}
     prev_ts: float | None = None
     try:
         while True:
             try:
                 # Fetch active Hotspot sessions with their bytes counters
-                active_users = await asyncio.to_thread(mikrotik.hotspot_active_list_with_bytes)
+                active_users = await asyncio.to_thread(mikrotik.hotspot_active_list_with_bytes, user["id"], router_id)
                 now = time.time()
                 dt = (now - prev_ts) if prev_ts else 2.0
                 if dt <= 0:

@@ -18,11 +18,6 @@ def _safe(fn, *args, **kwargs):
         raise HTTPException(status_code=502, detail=f"Mikrotik error: {e}")
 
 
-def _set_user_cfg(user: dict, router_id: int | None = None):
-    """Set active user and router so mikrotik module reads the right config."""
-    cfg_mod.set_active_user(user["id"], router_id)
-
-
 def _get_router_id(x_router_id: Optional[str] = Header(None)) -> int | None:
     """Extract router_id from X-Router-Id header."""
     if x_router_id is not None:
@@ -157,9 +152,8 @@ def test_router_connection(router_id: int, user: dict = Depends(get_current_user
     r = db.get_router_by_id(router_id, user["id"])
     if r is None:
         raise HTTPException(status_code=404, detail="Router tidak ditemukan")
-    _set_user_cfg(user, router_id)
     try:
-        res = mikrotik.get_system_resource()
+        res = mikrotik.get_system_resource(user["id"], router_id)
         return {"success": True, "identity": res.get("identity"), "version": res.get("version")}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -169,56 +163,47 @@ def test_router_connection(router_id: int, user: dict = Depends(get_current_user
 
 @router.get("/system/resource")
 def system_resource(user: dict = Depends(get_current_user), router_id: int | None = Depends(_get_router_id)):
-    _set_user_cfg(user, router_id)
-    return _safe(mikrotik.get_system_resource)
+    return _safe(mikrotik.get_system_resource, user["id"], router_id)
 
 
 @router.get("/interfaces")
 def interfaces(user: dict = Depends(get_current_user), router_id: int | None = Depends(_get_router_id)):
-    _set_user_cfg(user, router_id)
-    return _safe(mikrotik.list_interfaces)
+    return _safe(mikrotik.list_interfaces, user["id"], router_id)
 
 
 @router.get("/interfaces/summary")
 def interfaces_summary(user: dict = Depends(get_current_user), router_id: int | None = Depends(_get_router_id)):
-    _set_user_cfg(user, router_id)
-    return _safe(mikrotik.interface_summary)
+    return _safe(mikrotik.interface_summary, user["id"], router_id)
 
 
 @router.get("/ppp/stats")
 def ppp_stats(user: dict = Depends(get_current_user), router_id: int | None = Depends(_get_router_id)):
-    _set_user_cfg(user, router_id)
-    return _safe(mikrotik.ppp_stats)
+    return _safe(mikrotik.ppp_stats, user["id"], router_id)
 
 
 @router.get("/ppp/active")
 def ppp_active(user: dict = Depends(get_current_user), router_id: int | None = Depends(_get_router_id)):
-    _set_user_cfg(user, router_id)
-    return _safe(mikrotik.ppp_active_list)
+    return _safe(mikrotik.ppp_active_list, user["id"], router_id)
 
 
 @router.get("/ppp/secrets")
 def ppp_secrets(user: dict = Depends(get_current_user), router_id: int | None = Depends(_get_router_id)):
-    _set_user_cfg(user, router_id)
-    return _safe(mikrotik.ppp_secret_list)
+    return _safe(mikrotik.ppp_secret_list, user["id"], router_id)
 
 
 @router.get("/hotspot/stats")
 def hotspot_stats(user: dict = Depends(get_current_user), router_id: int | None = Depends(_get_router_id)):
-    _set_user_cfg(user, router_id)
-    return _safe(mikrotik.hotspot_stats)
+    return _safe(mikrotik.hotspot_stats, user["id"], router_id)
 
 
 @router.get("/hotspot/active")
 def hotspot_active(user: dict = Depends(get_current_user), router_id: int | None = Depends(_get_router_id)):
-    _set_user_cfg(user, router_id)
-    return _safe(mikrotik.hotspot_active_list)
+    return _safe(mikrotik.hotspot_active_list, user["id"], router_id)
 
 
 @router.get("/hotspot/users")
 def hotspot_users(user: dict = Depends(get_current_user), router_id: int | None = Depends(_get_router_id)):
-    _set_user_cfg(user, router_id)
-    return _safe(mikrotik.hotspot_user_list)
+    return _safe(mikrotik.hotspot_user_list, user["id"], router_id)
 
 
 # ── Legacy Config (protected) ─────────────────────────────
@@ -248,9 +233,8 @@ def update_config(body: ConfigUpdate, user: dict = Depends(get_current_user)):
 @router.post("/config/test")
 def test_connection(user: dict = Depends(get_current_user)):
     """Test koneksi ke Mikrotik dengan config saat ini."""
-    _set_user_cfg(user)
     try:
-        res = mikrotik.get_system_resource()
+        res = mikrotik.get_system_resource(user["id"], None)
         return {"success": True, "identity": res.get("identity"), "version": res.get("version")}
     except Exception as e:
         return {"success": False, "error": str(e)}

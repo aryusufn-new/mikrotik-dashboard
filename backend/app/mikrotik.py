@@ -10,58 +10,70 @@ from librouteros import connect
 from librouteros.exceptions import LibRouterosError
 
 
-def _cfg() -> dict[str, Any]:
+def _cfg(user_id: int | None = None, router_id: int | None = None) -> dict[str, Any]:
+    """Load config for specific router."""
     from .config import load as _load_cfg
-    return _load_cfg()
+    return _load_cfg(user_id=user_id, router_id=router_id)
 
 
 class _ThreadPool:
-    """One persistent connection per thread. Reconnects on error or config change."""
+    """One persistent connection per thread per router."""
 
     def __init__(self):
         self._local = threading.local()
         self._cfg_version = 0
         self._version_lock = threading.Lock()
 
-    def _get_conn(self):
-        return getattr(self._local, "api", None)
+    def _get_conn_key(self, router_id: int | None):
+        return f"conn_{router_id}" if router_id else "conn_default"
 
-    def _get_ver(self):
-        return getattr(self._local, "ver", -1)
+    def _get_ver_key(self, router_id: int | None):
+        return f"ver_{router_id}" if router_id else "ver_default"
 
-    def _do_connect(self, cfg: dict):
+    def _get_conn(self, router_id: int | None = None):
+        key = self._get_conn_key(router_id)
+        return getattr(self._local, key, None)
+
+    def _get_ver(self, router_id: int | None = None):
+        key = self._get_ver_key(router_id)
+        return getattr(self._local, key, -1)
+
+    def _do_connect(self, cfg: dict, router_id: int | None = None):
         api = connect(
             host=cfg["host"],
             username=cfg["username"],
             password=cfg["password"],
             port=cfg["port"],
         )
-        self._local.api = api
-        self._local.ver = self._cfg_version
+        conn_key = self._get_conn_key(router_id)
+        ver_key = self._get_ver_key(router_id)
+        setattr(self._local, conn_key, api)
+        setattr(self._local, ver_key, self._cfg_version)
         return api
 
-    def get(self):
-        api = self._get_conn()
-        if api is not None and self._get_ver() == self._cfg_version:
+    def get(self, user_id: int | None = None, router_id: int | None = None):
+        api = self._get_conn(router_id)
+        if api is not None and self._get_ver(router_id) == self._cfg_version:
             return api
-        # need (re)connect
         try:
             if api:
                 api.close()
         except Exception:
             pass
-        self._local.api = None
-        return self._do_connect(_cfg())
+        conn_key = self._get_conn_key(router_id)
+        setattr(self._local, conn_key, None)
+        return self._do_connect(_cfg(user_id, router_id), router_id)
 
-    def invalidate(self):
+    def invalidate(self, router_id: int | None = None):
         """Close this thread's connection so next get() reconnects."""
-        api = self._get_conn()
+        api = self._get_conn(router_id)
         try:
             if api:
                 api.close()
         except Exception:
             pass
-        self._local.api = None
+        conn_key = self._get_conn_key(router_id)
+        setattr(self._local, conn_key, None)
 
     def reset_all(self):
         """Bump version so all threads reconnect on next get()."""
@@ -78,13 +90,14 @@ def reset_connection():
 
 
 @contextmanager
-def ros_api():
+def ros_api(user_id: int | None = None, router_id: int | None = None):
+    """Context manager for RouterOS API connection."""
     try:
-        api = _pool.get()
+        api = _pool.get(user_id, router_id)
         yield api
     except (LibRouterosError, OSError, ConnectionError, BrokenPipeError):
-        _pool.invalidate()
-        api = _pool.get()
+        _pool.invalidate(router_id)
+        api = _pool.get(user_id, router_id)
         yield api
 
 
@@ -108,8 +121,8 @@ def _to_bool(v):
     return str(v).lower() in ("true", "yes", "1")
 
 
-def get_system_resource() -> dict[str, Any]:
-    with ros_api() as api:
+def get_system_resource(user_id: int | None = None, router_id: int | None = None) -> dict[str, Any]:
+    with ros_api(user_id, router_id) as api:
         identity = None
         try:
             for row in _path(api, "system", "identity"):
@@ -120,7 +133,7 @@ def get_system_resource() -> dict[str, Any]:
         for row in _path(api, "system", "resource"):
             return {
                 "identity": identity,
-                "host": _cfg()["host"],
+                "host": _cfg(user_id, router_id)["host"],
                 "board_name": row.get("board-name"),
                 "version": row.get("version"),
                 "cpu_load": _to_int(row.get("cpu-load")),
@@ -134,8 +147,8 @@ def get_system_resource() -> dict[str, Any]:
     return {}
 
 
-def list_interfaces() -> list[dict[str, Any]]:
-    with ros_api() as api:
+def list_interfaces(user_id: int | None = None, router_id: int | None = None) -> list[dict[str, Any]]:
+    with ros_api(user_id, router_id) as api:
         rows: Iterable[dict] = _path(api, "interface")
         result = []
         for r in rows:
@@ -152,8 +165,8 @@ def list_interfaces() -> list[dict[str, Any]]:
         return result
 
 
-def interface_summary() -> dict[str, int]:
-    items = list_interfaces()
+def interface_summary(user_id: int | None = None, router_id: int | None = None) -> dict[str, int]:
+    items = list_interfaces(user_id, router_id)
     total = len(items)
     running = sum(1 for i in items if i["running"])
     disabled = sum(1 for i in items if i["disabled"])
@@ -161,8 +174,8 @@ def interface_summary() -> dict[str, int]:
     return {"total": total, "running": running, "down": max(0, down), "disabled": disabled}
 
 
-def ppp_stats() -> dict[str, int]:
-    with ros_api() as api:
+def ppp_stats(user_id: int | None = None, router_id: int | None = None) -> dict[str, int]:
+    with ros_api(user_id, router_id) as api:
         secrets = list(_path(api, "ppp", "secret"))
         active = list(_path(api, "ppp", "active"))
     total = len(secrets)
@@ -170,8 +183,8 @@ def ppp_stats() -> dict[str, int]:
     return {"total": total, "online": online, "offline": max(0, total - online)}
 
 
-def ppp_active_list() -> list[dict[str, Any]]:
-    with ros_api() as api:
+def ppp_active_list(user_id: int | None = None, router_id: int | None = None) -> list[dict[str, Any]]:
+    with ros_api(user_id, router_id) as api:
         rows = _path(api, "ppp", "active")
         return [
             {
@@ -185,8 +198,8 @@ def ppp_active_list() -> list[dict[str, Any]]:
         ]
 
 
-def ppp_secret_list() -> list[dict[str, Any]]:
-    with ros_api() as api:
+def ppp_secret_list(user_id: int | None = None, router_id: int | None = None) -> list[dict[str, Any]]:
+    with ros_api(user_id, router_id) as api:
         active_names = {r.get("name") for r in _path(api, "ppp", "active")}
         rows = _path(api, "ppp", "secret")
         return [
@@ -202,8 +215,8 @@ def ppp_secret_list() -> list[dict[str, Any]]:
         ]
 
 
-def hotspot_active_list() -> list[dict[str, Any]]:
-    with ros_api() as api:
+def hotspot_active_list(user_id: int | None = None, router_id: int | None = None) -> list[dict[str, Any]]:
+    with ros_api(user_id, router_id) as api:
         rows = _path(api, "ip", "hotspot", "active")
         return [
             {
@@ -217,9 +230,9 @@ def hotspot_active_list() -> list[dict[str, Any]]:
         ]
 
 
-def hotspot_active_list_with_bytes() -> list[dict[str, Any]]:
+def hotspot_active_list_with_bytes(user_id: int | None = None, router_id: int | None = None) -> list[dict[str, Any]]:
     """Get active Hotspot sessions including bytes counters for traffic calculations."""
-    with ros_api() as api:
+    with ros_api(user_id, router_id) as api:
         rows = list(_path(api, "ip", "hotspot", "active"))
         return [
             {
@@ -235,8 +248,8 @@ def hotspot_active_list_with_bytes() -> list[dict[str, Any]]:
         ]
 
 
-def hotspot_user_list() -> list[dict[str, Any]]:
-    with ros_api() as api:
+def hotspot_user_list(user_id: int | None = None, router_id: int | None = None) -> list[dict[str, Any]]:
+    with ros_api(user_id, router_id) as api:
         active_users = {r.get("user") for r in _path(api, "ip", "hotspot", "active")}
         rows = _path(api, "ip", "hotspot", "user")
         return [
@@ -251,9 +264,9 @@ def hotspot_user_list() -> list[dict[str, Any]]:
         ]
 
 
-def hotspot_stats() -> dict[str, int]:
+def hotspot_stats(user_id: int | None = None, router_id: int | None = None) -> dict[str, int]:
     """Hotspot users stats: total = /ip hotspot user, online = /ip hotspot active."""
-    with ros_api() as api:
+    with ros_api(user_id, router_id) as api:
         users = list(_path(api, "ip", "hotspot", "user"))
         active = list(_path(api, "ip", "hotspot", "active"))
     total = len(users)
@@ -261,9 +274,9 @@ def hotspot_stats() -> dict[str, int]:
     return {"total": total, "online": online, "offline": max(0, total - online)}
 
 
-def monitor_traffic_once(iface: str) -> dict[str, int]:
+def monitor_traffic_once(iface: str, user_id: int | None = None, router_id: int | None = None) -> dict[str, int]:
     """Run /interface monitor-traffic once=yes for given interface."""
-    with ros_api() as api:
+    with ros_api(user_id, router_id) as api:
         cmd = api.rawCmd(
             "/interface/monitor-traffic",
             f"=interface={iface}",
@@ -277,9 +290,9 @@ def monitor_traffic_once(iface: str) -> dict[str, int]:
     return {"rx_bps": 0, "tx_bps": 0}
 
 
-def ppp_active_with_interfaces() -> list[dict[str, Any]]:
+def ppp_active_with_interfaces(user_id: int | None = None, router_id: int | None = None) -> list[dict[str, Any]]:
     """Get active PPPoE sessions including their dynamically assigned interface name."""
-    with ros_api() as api:
+    with ros_api(user_id, router_id) as api:
         rows = list(_path(api, "ppp", "active"))
         return [
             {
@@ -294,7 +307,7 @@ def ppp_active_with_interfaces() -> list[dict[str, Any]]:
         ]
 
 
-def monitor_ppp_traffic(ifaces: list[str]) -> dict[str, dict[str, int]]:
+def monitor_ppp_traffic(ifaces: list[str], user_id: int | None = None, router_id: int | None = None) -> dict[str, dict[str, int]]:
     """Monitor traffic for a list of PPPoE interfaces in a single API call.
 
     Returns a dict mapping interface name → {rx_bps, tx_bps}.
@@ -304,7 +317,7 @@ def monitor_ppp_traffic(ifaces: list[str]) -> dict[str, dict[str, int]]:
         return {}
     result: dict[str, dict[str, int]] = {iface: {"rx_bps": 0, "tx_bps": 0} for iface in ifaces}
     try:
-        with ros_api() as api:
+        with ros_api(user_id, router_id) as api:
             # Join all interface names with comma for a single batch call
             iface_list = ",".join(ifaces)
             cmd = api.rawCmd(
