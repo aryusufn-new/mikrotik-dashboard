@@ -1,9 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { listRouters } from '../api'
+import { useAuth } from './AuthContext'
 
 const RouterContext = createContext(null)
 
 export function RouterProvider({ children }) {
+  const { token } = useAuth()
   const [routers, setRouters] = useState([])
   const [activeRouterId, setActiveRouterIdState] = useState(() => {
     const stored = localStorage.getItem('activeRouterId')
@@ -43,13 +45,14 @@ export function RouterProvider({ children }) {
   }, [activeRouterId, setActiveRouterId])
 
   useEffect(() => {
-    const token = localStorage.getItem('token')
     if (token) {
       refreshRouters()
     } else {
+      setRouters([])
+      setActiveRouterId(null)
       setLoading(false)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [token, refreshRouters, setActiveRouterId])
 
   const activeRouter = routers.find((r) => r.id === activeRouterId) || null
 
