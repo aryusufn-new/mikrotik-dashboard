@@ -1,0 +1,464 @@
+# Mikrotik Monitoring Dashboard
+
+Dashboard sederhana untuk memantau RouterOS Mikrotik:
+
+- Info board: Board Name, Version, Memory, CPU Load, Uptime
+- Traffic realtime per interface (TX / RX) via WebSocket
+- Statistik PPP Secret: Total / Online / Offline
+
+Stack: **FastAPI + librouteros** (backend) & **React + Vite + Tailwind + Recharts** (frontend).
+
+## Prasyarat
+
+- Python 3.10+
+- Node.js 18+
+- RouterOS dengan service **API** aktif (default port `8728`)
+  - Aktifkan via Winbox: `IP > Services > api`
+  - Pastikan user yang dipakai punya policy minimal `api, read`
+
+## 1. Backend
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+# edit .env -> isi MIKROTIK_HOST, MIKROTIK_USER, MIKROTIK_PASSWORD
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Endpoint:
+- `GET  /api/system/resource`
+- `GET  /api/interfaces`
+- `GET  /api/ppp/stats`
+- `WS   /ws/traffic?iface=ether1`
+
+## 2. Frontend
+
+```bash
+cd frontend
+npm install
+cp .env.example .env   # opsional, default sudah menunjuk ke localhost:8000
+npm run dev
+```
+
+Buka <http://localhost:5173>.
+
+## Konfigurasi
+
+`backend/.env`:
+
+```env
+MIKROTIK_HOST=192.168.88.1
+MIKROTIK_USER=admin
+MIKROTIK_PASSWORD=secret
+MIKROTIK_PORT=8728
+CORS_ORIGINS=http://localhost:5173
+```
+
+`frontend/.env`:
+
+```env
+VITE_API_BASE=http://localhost:8000
+VITE_WS_BASE=ws://localhost:8000
+```
+
+## Catatan
+
+- WebSocket `/ws/traffic` melakukan polling `/interface/monitor-traffic once=` setiap 1 detik per koneksi klien. Untuk skala besar, pertimbangkan pooling koneksi RouterOS atau menggunakan satu task background yang dibroadcast ke seluruh klien.
+- Jika menggunakan API-SSL (`8729`), ubah `MIKROTIK_PORT` dan sesuaikan koneksi `librouteros` (perlu konteks SSL).
+- Pastikan firewall di sisi Mikrotik mengizinkan akses port API dari host yang menjalankan backend.
+
+## Struktur
+
+```
+mikrotik-dashboard/
+├── backend/
+│   ├── app/
+│   │   ├── main.py
+│   │   ├── mikrotik.py
+│   │   ├── routes.py
+│   │   └── ws.py
+│   ├── requirements.txt
+│   └── .env.example
+└── frontend/
+    ├── src/
+    │   ├── App.jsx
+    │   ├── api.js
+    │   ├── hooks/useTrafficWS.js
+    │   ├── components/{TrafficPanel,BoardInfo,SecretsCards}.jsx
+    │   └── utils/format.js
+    ├── index.html
+    ├── package.json
+    ├── tailwind.config.js
+    └── vite.config.js
+```
+# mimosa
+
+
+
+--------------------------
+
+
+# MIMO.SA - Mikrotik Monitoring System
+
+## Deskripsi Aplikasi
+
+**MIMO.SA** adalah web-based dashboard untuk monitoring router MikroTik secara real-time. Dibangun menggunakan **FastAPI** (Python) sebagai backend dan **React + Vite + Tailwind CSS** sebagai frontend, aplikasi ini terhubung langsung ke RouterOS melalui API (port 8728) dan menyajikan data monitoring dalam tampilan yang modern dan responsif.
+
+### Fitur Utama
+
+| Fitur | Deskripsi |
+|-------|-----------|
+| **Device Monitor** | Menampilkan identitas router, board name, IP, status online/offline, uptime, versi firmware. Dilengkapi animated SVG donut gauge untuk CPU load, RAM usage, dan disk usage secara real-time. |
+| **Interface Traffic** | Monitoring traffic seluruh interface secara real-time via WebSocket (interval 1 detik). Menampilkan jumlah interface running/down, aggregate RX/TX bandwidth, live chart (Recharts), dan tabel detail per-interface. |
+| **PPPoE Monitor** | Statistik PPP secret (total/online/offline), daftar semua PPP secret dengan status online, IP, uptime, caller ID. Dilengkapi search dan filter. |
+| **Hotspot Monitor** | Statistik hotspot user (total/online/offline), daftar semua user dengan status, IP, MAC address, uptime, server. Dilengkapi search dan filter. |
+| **Router Configuration** | Form in-app untuk mengubah koneksi MikroTik (host, username, password, port) dengan tombol "Test Connection". Konfigurasi disimpan per-user di SQLite. |
+| **Authentication** | Sistem login berbasis JWT. Password di-hash dengan bcrypt. Default user: `admin` / `admin`. |
+
+### Tech Stack
+
+**Backend:**
+- FastAPI 0.115.0
+- Uvicorn (ASGI Server)
+- librouteros (MikroTik API client)
+- SQLite + aiosqlite
+- Pydantic, python-jose (JWT), passlib (bcrypt)
+
+**Frontend:**
+- React 18 + Vite 5
+- Tailwind CSS 3
+- Recharts (charting)
+- Axios (HTTP client)
+- React Router DOM 6
+- Lucide React (icons)
+
+### Arsitektur
+
+```
+Browser <--HTTP/WS--> FastAPI (Python) <--RouterOS API--> MikroTik Router
+                          |
+                       SQLite DB
+                    (users & config)
+```
+
+---
+
+## Deploy di CT Proxmox (Tanpa Docker)
+
+Panduan ini menggunakan **LXC Container (CT)** di Proxmox VE untuk deploy MIMO.SA secara langsung tanpa Docker.
+
+### Prasyarat
+
+- Proxmox VE 7.x / 8.x
+- Template CT: **Ubuntu 22.04** atau **Debian 12**
+- Akses ke MikroTik router dengan service API aktif (port 8728)
+- Koneksi internet pada CT untuk download dependencies
+
+---
+
+### Step 1: Buat CT di Proxmox
+
+1. Login ke Proxmox Web UI (`https://<IP_PROXMOX>:8006`)
+2. Klik **Create CT** (kanan atas)
+3. Isi konfigurasi:
+
+| Parameter | Nilai |
+|-----------|-------|
+| Hostname | `mimosa` |
+| Template | Ubuntu 22.04 / Debian 12 |
+| Disk | 8 GB (minimum) |
+| CPU | 1-2 cores |
+| Memory | 512 MB - 1 GB |
+| Network | DHCP atau static IP (pastikan bisa akses MikroTik) |
+| Unprivileged | Yes (recommended) |
+
+4. Klik **Create** dan tunggu selesai
+5. Start CT
+
+### Step 2: Akses CT dan Update Sistem
+
+```bash
+# Dari Proxmox, akses shell CT
+pct enter <CTID>
+
+# Atau via SSH
+ssh root@<IP_CT>
+
+# Update sistem
+apt update && apt upgrade -y
+```
+
+### Step 3: Install Dependencies
+
+```bash
+# Install Python 3, pip, venv, Node.js, npm, git
+apt install -y python3 python3-pip python3-venv nodejs npm git curl
+
+# Cek versi Node.js (harus >= 18)
+node -v
+
+# Jika Node.js < 18, install via NodeSource:
+curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+apt install -y nodejs
+```
+
+### Step 4: Clone / Upload Project
+
+**Opsi A: Clone dari Git**
+```bash
+cd /opt
+git clone <URL_REPO> mikrotik-dashboard
+cd mikrotik-dashboard
+```
+
+**Opsi B: Upload Manual**
+```bash
+# Dari PC lokal, upload via scp
+scp -r /path/to/mikrotik-dashboard root@<IP_CT>:/opt/mikrotik-dashboard
+```
+
+### Step 5: Setup Backend
+
+```bash
+cd /opt/mikrotik-dashboard/backend
+
+# Buat virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Konfigurasi environment
+cp .env.example .env
+```
+
+Edit file `.env`:
+```bash
+nano .env
+```
+
+Isi dengan konfigurasi MikroTik kamu:
+```env
+MIKROTIK_HOST=192.168.88.1
+MIKROTIK_USER=admin
+MIKROTIK_PASSWORD=password_kamu
+MIKROTIK_PORT=8728
+CORS_ORIGINS=http://<IP_CT>:5173
+JWT_SECRET=ganti-dengan-secret-key-yang-aman
+```
+
+**Test backend:**
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+# Ctrl+C untuk stop setelah berhasil
+```
+
+### Step 6: Setup Frontend
+
+```bash
+cd /opt/mikrotik-dashboard/frontend
+
+# Install dependencies
+npm install
+
+# Konfigurasi environment
+cp .env.example .env
+```
+
+Edit file `.env`:
+```bash
+nano .env
+```
+
+Isi:
+```env
+VITE_API_BASE=http://<IP_CT>:8000
+VITE_WS_BASE=ws://<IP_CT>:8000
+```
+
+**Build frontend untuk production:**
+```bash
+npm run build
+```
+
+Hasil build ada di folder `dist/`.
+
+### Step 7: Serve Frontend dengan Nginx
+
+```bash
+# Install Nginx
+apt install -y nginx
+
+# Hapus default config
+rm /etc/nginx/sites-enabled/default
+
+# Buat config untuk MIMO.SA
+nano /etc/nginx/sites-available/mimosa
+```
+
+Isi config Nginx:
+```nginx
+server {
+    listen 80;
+    server_name _;
+
+    # Frontend (static files)
+    root /opt/mikrotik-dashboard/frontend/dist;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Proxy API ke backend
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # Proxy WebSocket ke backend
+    location /ws/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 86400;
+    }
+}
+```
+
+Aktifkan config:
+```bash
+ln -s /etc/nginx/sites-available/mimosa /etc/nginx/sites-enabled/
+nginx -t
+systemctl restart nginx
+systemctl enable nginx
+```
+
+### Step 8: Buat Systemd Service untuk Backend
+
+```bash
+nano /etc/systemd/system/mimosa-backend.service
+```
+
+Isi:
+```ini
+[Unit]
+Description=MIMO.SA Backend (FastAPI)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/mikrotik-dashboard/backend
+Environment=PATH=/opt/mikrotik-dashboard/backend/.venv/bin:/usr/bin
+ExecStart=/opt/mikrotik-dashboard/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Aktifkan service:
+```bash
+systemctl daemon-reload
+systemctl enable mimosa-backend
+systemctl start mimosa-backend
+
+# Cek status
+systemctl status mimosa-backend
+```
+
+### Step 9: Update Frontend Environment
+
+Karena sekarang frontend dan backend di-serve lewat Nginx (port 80), update `.env` frontend:
+
+```bash
+cd /opt/mikrotik-dashboard/frontend
+nano .env
+```
+
+Ubah menjadi (kosongkan atau pakai relative path):
+```env
+VITE_API_BASE=
+VITE_WS_BASE=
+```
+
+Atau jika menggunakan IP:
+```env
+VITE_API_BASE=http://<IP_CT>
+VITE_WS_BASE=ws://<IP_CT>
+```
+
+Rebuild:
+```bash
+npm run build
+```
+
+### Step 10: Akses Dashboard
+
+Buka browser dan akses:
+```
+http://<IP_CT>
+```
+
+Login dengan:
+- **Username:** `admin`
+- **Password:** `admin`
+
+> **PENTING:** Segera ganti password default setelah login pertama!
+
+---
+
+### Troubleshooting
+
+| Masalah | Solusi |
+|---------|--------|
+| Backend tidak bisa konek ke MikroTik | Pastikan port API (8728) terbuka di firewall MikroTik. Cek `IP > Services > api` di Winbox. Pastikan CT bisa ping IP MikroTik. |
+| WebSocket putus-putus | Cek konfigurasi Nginx `proxy_read_timeout`. Pastikan `Connection "upgrade"` ada di config. |
+| Frontend blank / 404 | Pastikan `npm run build` berhasil. Cek path `root` di Nginx mengarah ke `/opt/mikrotik-dashboard/frontend/dist`. |
+| Permission denied | Pastikan user di systemd service punya akses ke folder project. |
+| CT tidak bisa akses internet | Cek DNS di CT (`/etc/resolv.conf`), pastikan gateway sudah benar. |
+
+### Monitoring Service
+
+```bash
+# Cek status backend
+systemctl status mimosa-backend
+
+# Lihat log backend
+journalctl -u mimosa-backend -f
+
+# Cek status Nginx
+systemctl status nginx
+
+# Lihat log Nginx
+tail -f /var/log/nginx/error.log
+```
+
+---
+
+### Spesifikasi Minimum CT Proxmox
+
+| Resource | Minimum | Recommended |
+|----------|---------|-------------|
+| CPU | 1 core | 2 cores |
+| RAM | 512 MB | 1 GB |
+| Disk | 8 GB | 15 GB |
+| OS | Ubuntu 22.04 / Debian 12 | Ubuntu 22.04 LTS |
+
+---
+
+*MIMO.SA - Mikrotik Monitoring System | Built with FastAPI + React*
+
+
+
