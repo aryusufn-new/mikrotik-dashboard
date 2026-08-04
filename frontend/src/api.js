@@ -73,6 +73,7 @@ export const getPppActive = () => http.get('/api/ppp/active').then(r => r.data)
 export const getPppSecrets = () => http.get('/api/ppp/secrets').then(r => r.data)
 export const getHotspotActive = () => http.get('/api/hotspot/active').then(r => r.data)
 export const getHotspotUsers = () => http.get('/api/hotspot/users').then(r => r.data)
+export const getTopology = () => http.get('/api/topology').then(r => r.data)
 
 // Legacy config (still used by old ConfigPage)
 export const getConfig = () => http.get('/api/config').then(r => r.data)

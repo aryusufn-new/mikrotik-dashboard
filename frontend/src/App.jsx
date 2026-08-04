@@ -11,6 +11,7 @@ import InterfaceTraffic from './pages/InterfaceTraffic'
 import PppoeMonitor from './pages/PppoeMonitor'
 import HotspotMonitor from './pages/HotspotMonitor'
 import ConfigPage from './pages/ConfigPage'
+import NetworkTopology from './pages/NetworkTopology'
 
 function Wrap({ children }) {
   return <ErrorBoundary>{children}</ErrorBoundary>
@@ -44,6 +45,7 @@ export default function App() {
               <Route path="/interfaces" element={<Wrap><InterfaceTraffic /></Wrap>} />
               <Route path="/pppoe" element={<Wrap><PppoeMonitor /></Wrap>} />
               <Route path="/hotspot" element={<Wrap><HotspotMonitor /></Wrap>} />
+              <Route path="/topology" element={<Wrap><NetworkTopology /></Wrap>} />
               <Route path="/config" element={<Wrap><ConfigPage /></Wrap>} />
               <Route path="*" element={<Navigate to="/device" replace />} />
             </Route>

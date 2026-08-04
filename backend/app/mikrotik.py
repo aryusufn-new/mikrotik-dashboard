@@ -290,6 +290,153 @@ def monitor_traffic_once(iface: str, user_id: int | None = None, router_id: int 
     return {"rx_bps": 0, "tx_bps": 0}
 
 
+def get_topology_data(user_id: int | None = None, router_id: int | None = None) -> dict[str, Any]:
+    with ros_api(user_id, router_id) as api:
+        identity = None
+        try:
+            for row in _path(api, "system", "identity"):
+                identity = row.get("name")
+                break
+        except Exception:
+            pass
+
+        resource = {}
+        try:
+            for row in _path(api, "system", "resource"):
+                resource = {
+                    "board_name": row.get("board-name"),
+                    "version": row.get("version"),
+                    "cpu_load": _to_int(row.get("cpu-load")),
+                    "uptime": row.get("uptime"),
+                }
+                break
+        except Exception:
+            pass
+
+        interfaces = []
+        try:
+            for r in _path(api, "interface"):
+                interfaces.append({
+                    "name": r.get("name"),
+                    "type": r.get("type"),
+                    "running": _to_bool(r.get("running")),
+                    "disabled": _to_bool(r.get("disabled")),
+                    "mac_address": r.get("mac-address"),
+                    "comment": r.get("comment"),
+                })
+        except Exception:
+            pass
+
+        ip_addresses = []
+        try:
+            for r in _path(api, "ip", "address"):
+                ip_addresses.append({
+                    "address": r.get("address"),
+                    "network": r.get("network"),
+                    "interface": r.get("interface"),
+                    "disabled": _to_bool(r.get("disabled")),
+                })
+        except Exception:
+            pass
+
+        routes = []
+        try:
+            for r in _path(api, "ip", "route"):
+                routes.append({
+                    "dst_address": r.get("dst-address"),
+                    "gateway": r.get("gateway"),
+                    "distance": _to_int(r.get("distance")),
+                    "routing_mark": r.get("routing-mark"),
+                    "active": _to_bool(r.get("active")),
+                    "dynamic": _to_bool(r.get("dynamic")),
+                })
+        except Exception:
+            pass
+
+        arp_table = []
+        try:
+            for r in _path(api, "ip", "arp"):
+                arp_table.append({
+                    "address": r.get("address"),
+                    "mac_address": r.get("mac-address"),
+                    "interface": r.get("interface"),
+                    "dynamic": _to_bool(r.get("dynamic")),
+                    "complete": _to_bool(r.get("complete")),
+                })
+        except Exception:
+            pass
+
+        neighbors = []
+        try:
+            for r in _path(api, "ip", "neighbor"):
+                neighbors.append({
+                    "identity": r.get("identity"),
+                    "address": r.get("address"),
+                    "address4": r.get("address4"),
+                    "interface": r.get("interface"),
+                    "mac_address": r.get("mac-address"),
+                    "platform": r.get("platform"),
+                    "board": r.get("board"),
+                    "version": r.get("version"),
+                    "system_description": r.get("system-description"),
+                })
+        except Exception:
+            pass
+
+        dhcp_leases = []
+        try:
+            for r in _path(api, "ip", "dhcp-server", "lease"):
+                dhcp_leases.append({
+                    "address": r.get("address"),
+                    "mac_address": r.get("mac-address"),
+                    "host_name": r.get("host-name"),
+                    "server": r.get("server"),
+                    "status": r.get("status"),
+                    "active_address": r.get("active-address"),
+                    "comment": r.get("comment"),
+                })
+        except Exception:
+            pass
+
+        ppp_active = []
+        try:
+            for r in _path(api, "ppp", "active"):
+                ppp_active.append({
+                    "name": r.get("name"),
+                    "service": r.get("service"),
+                    "address": r.get("address"),
+                    "caller_id": r.get("caller-id"),
+                })
+        except Exception:
+            pass
+
+        hotspot_active = []
+        try:
+            for r in _path(api, "ip", "hotspot", "active"):
+                hotspot_active.append({
+                    "user": r.get("user"),
+                    "address": r.get("address"),
+                    "mac_address": r.get("mac-address"),
+                    "server": r.get("server"),
+                })
+        except Exception:
+            pass
+
+        return {
+            "identity": identity,
+            "host": _cfg(user_id, router_id)["host"],
+            "resource": resource,
+            "interfaces": interfaces,
+            "ip_addresses": ip_addresses,
+            "routes": routes,
+            "arp_table": arp_table,
+            "neighbors": neighbors,
+            "dhcp_leases": dhcp_leases,
+            "ppp_active": ppp_active,
+            "hotspot_active": hotspot_active,
+        }
+
+
 def ppp_active_with_interfaces(user_id: int | None = None, router_id: int | None = None) -> list[dict[str, Any]]:
     """Get active PPPoE sessions including their dynamically assigned interface name."""
     with ros_api(user_id, router_id) as api:

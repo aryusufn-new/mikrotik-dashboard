@@ -1,6 +1,6 @@
 import React from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { Activity, ChevronDown, Cpu, LogOut, Router, Settings, Users, Wifi } from 'lucide-react'
+import { Activity, ChevronDown, Cpu, LogOut, Network, Router, Settings, Users, Wifi } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useRouter } from '../context/RouterContext'
 
@@ -9,6 +9,7 @@ const monitorItems = [
   { to: '/interfaces', label: 'Interface Traffic', icon: Activity },
   { to: '/pppoe', label: 'PPPoE Monitor', icon: Users },
   { to: '/hotspot', label: 'Hotspot Monitor', icon: Wifi },
+  { to: '/topology', label: 'Network Topology', icon: Network },
 ]
 
 const settingsItems = [

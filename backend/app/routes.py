@@ -206,6 +206,11 @@ def hotspot_users(user: dict = Depends(get_current_user), router_id: int | None 
     return _safe(mikrotik.hotspot_user_list, user["id"], router_id)
 
 
+@router.get("/topology")
+def topology(user: dict = Depends(get_current_user), router_id: int | None = Depends(_get_router_id)):
+    return _safe(mikrotik.get_topology_data, user["id"], router_id)
+
+
 # ── Legacy Config (protected) ─────────────────────────────
 
 class ConfigUpdate(BaseModel):
