@@ -1,12 +1,47 @@
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: mikrotik-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mikrotik
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-mikrotik_secret}
+      POSTGRES_DB: mikrotik
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mikrotik"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: mikrotik-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@mimosa.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
+    ports:
+      - "5050:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app-network
+
   backend:
     build: ./backend
     container_name: mikrotik-backend
     restart: unless-stopped
-    volumes:
-      - db-data:/app/data
     environment:
       - JWT_SECRET=${JWT_SECRET:-supersecretkey123changeme}
+      - DATABASE_URL=postgresql://mikrotik:${DB_PASSWORD:-mikrotik_secret}@db:5432/mikrotik
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - app-network
 
@@ -22,7 +57,7 @@ services:
       - app-network
 
 volumes:
-  db-data:
+  pg-data:
     driver: local
 
 networks:
