@@ -5,8 +5,5 @@ __pycache__/
 *.pyo
 *.pyd
 .env
-data.db
-data.db-shm
-data.db-wal
 .git
 .gitignore
