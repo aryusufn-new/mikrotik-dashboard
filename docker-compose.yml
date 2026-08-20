@@ -1,65 +1,40 @@
 services:
-  db:
-    image: postgres:16-alpine
-    container_name: mikrotik-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: mikrotik
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-mikrotik_secret}
-      POSTGRES_DB: mikrotik
-    volumes:
-      - pg-data:/var/lib/postgresql/data
-    networks:
-      - app-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mikrotik"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
   pgadmin:
     image: dpage/pgadmin4:latest
-    container_name: mikrotik-pgadmin
+    container_name: mikrotik-dev-pgadmin
     restart: unless-stopped
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@mimosa.com}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
     ports:
-      - "5050:80"
-    depends_on:
-      db:
-        condition: service_healthy
+      - "5051:80"
     networks:
-      - app-network
+      - shared-db
 
   backend:
     build: ./backend
-    container_name: mikrotik-backend
+    container_name: mikrotik-dev-backend
     restart: unless-stopped
     environment:
       - JWT_SECRET=${JWT_SECRET:-supersecretkey123changeme}
-      - DATABASE_URL=postgresql://mikrotik:${DB_PASSWORD:-mikrotik_secret}@db:5432/mikrotik
-    depends_on:
-      db:
-        condition: service_healthy
+      - DATABASE_URL=postgresql://mikrotik:${DB_PASSWORD:-mikrotik_secret}@mikrotik-db:5432/mikrotik_dev
     networks:
-      - app-network
+      - shared-db
+      - dev-network
 
   frontend:
     build: ./frontend
-    container_name: mikrotik-frontend
+    container_name: mikrotik-dev-frontend
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "8080:80"
     depends_on:
       - backend
     networks:
-      - app-network
-
-volumes:
-  pg-data:
-    driver: local
+      - dev-network
 
 networks:
-  app-network:
+  shared-db:
+    external: true
+  dev-network:
     driver: bridge
