@@ -1,6 +1,8 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import { getTopology } from '../api'
 import { useRouter } from '../context/RouterContext'
+import useInterfacesWS from '../hooks/useInterfacesWS'
+import { formatBps } from '../utils/format'
 import { Network, RefreshCw, ZoomIn, ZoomOut, Maximize2, Info, X, ChevronDown, ChevronRight } from 'lucide-react'
 
 const NODE_COLORS = {
@@ -119,6 +121,7 @@ function buildTopology(data) {
       to: netId,
       label: iface.running ? '' : 'down',
       dashed: !iface.running,
+      ifaceName: iface.name,
     })
 
     const clients = arpByIface[iface.name] || []
@@ -260,10 +263,17 @@ function layoutNodes(nodes, edges) {
   })
 }
 
-function NodeShape({ node, selected, onSelect }) {
+function NodeShape({ node, selected, onSelect, trafficMap }) {
   const colors = NODE_COLORS[node.type] || NODE_COLORS.network
   const isRouter = node.type === 'router'
   const r = isRouter ? 40 : 30
+
+  const ifaceName = node.type === 'network' ? node.label : null
+  const traffic = ifaceName ? trafficMap[ifaceName] : null
+  const totalTraffic = isRouter ? Object.values(trafficMap).reduce(
+    (acc, t) => ({ rx: acc.rx + (t.rx_bps || 0), tx: acc.tx + (t.tx_bps || 0) }),
+    { rx: 0, tx: 0 }
+  ) : null
 
   return (
     <g
@@ -290,11 +300,39 @@ function NodeShape({ node, selected, onSelect }) {
         className="text-[10px] font-bold" fill={colors.text}>
         {node.type === 'router' ? '⬡' : node.type === 'gateway' ? '☁' : node.type === 'neighbor' ? '⬢' : node.type === 'client_group' ? '⊞' : '◆'}
       </text>
+      {traffic && (
+        <>
+          <rect x={node.x - 40} y={node.y + r + 4} width={80} height={24} rx={5}
+            fill="white" stroke="#e2e8f0" strokeWidth={0.8} opacity={0.92} />
+          <text x={node.x} y={node.y + r + 16} textAnchor="middle"
+            className="text-[7px] font-semibold" fill="#ef4444">
+            ↓{formatBps(traffic.rx_bps)}
+          </text>
+          <text x={node.x} y={node.y + r + 25} textAnchor="middle"
+            className="text-[7px] font-semibold" fill="#3b82f6">
+            ↑{formatBps(traffic.tx_bps)}
+          </text>
+        </>
+      )}
+      {totalTraffic && (
+        <>
+          <rect x={node.x - 44} y={node.y + r + 4} width={88} height={24} rx={5}
+            fill="white" stroke="#e2e8f0" strokeWidth={0.8} opacity={0.92} />
+          <text x={node.x} y={node.y + r + 16} textAnchor="middle"
+            className="text-[7px] font-semibold" fill="#ef4444">
+            Total ↓{formatBps(totalTraffic.rx)}
+          </text>
+          <text x={node.x} y={node.y + r + 25} textAnchor="middle"
+            className="text-[7px] font-semibold" fill="#3b82f6">
+            Total ↑{formatBps(totalTraffic.tx)}
+          </text>
+        </>
+      )}
     </g>
   )
 }
 
-function EdgeLine({ edge, nodes }) {
+function EdgeLine({ edge, nodes, trafficMap }) {
   const from = nodes.find(n => n.id === edge.from)
   const to = nodes.find(n => n.id === edge.to)
   if (!from || !to) return null
@@ -315,15 +353,38 @@ function EdgeLine({ edge, nodes }) {
   const mx = (x1 + x2) / 2
   const my = (y1 + y2) / 2
 
+  const traffic = edge.ifaceName ? trafficMap[edge.ifaceName] : null
+  const hasTraffic = traffic && (traffic.rx_bps > 0 || traffic.tx_bps > 0)
+
   return (
     <g>
       <line x1={x1} y1={y1} x2={x2} y2={y2}
-        stroke={edge.dashed ? '#f87171' : '#cbd5e1'}
-        strokeWidth={1.5}
+        stroke={edge.dashed ? '#f87171' : hasTraffic ? '#60a5fa' : '#cbd5e1'}
+        strokeWidth={hasTraffic ? 2.5 : 1.5}
         strokeDasharray={edge.dashed ? '6 4' : 'none'}
         markerEnd="url(#arrowhead)"
       />
-      {edge.label && (
+      {hasTraffic && (
+        <circle r={3} fill="#3b82f6" opacity={0.9}>
+          <animateMotion dur="2s" repeatCount="indefinite"
+            path={`M${x1},${y1} L${x2},${y2}`} />
+        </circle>
+      )}
+      {traffic && (
+        <>
+          <rect x={mx - 42} y={my - 17} width={84} height={30} rx={5}
+            fill="white" stroke="#e2e8f0" strokeWidth={0.8} opacity={0.92} />
+          <text x={mx} y={my - 4} textAnchor="middle"
+            className="text-[8px] font-semibold" fill="#ef4444">
+            ↓ {formatBps(traffic.rx_bps)}
+          </text>
+          <text x={mx} y={my + 9} textAnchor="middle"
+            className="text-[8px] font-semibold" fill="#3b82f6">
+            ↑ {formatBps(traffic.tx_bps)}
+          </text>
+        </>
+      )}
+      {!traffic && edge.label && (
         <text x={mx} y={my - 6} textAnchor="middle"
           className="text-[9px]" fill="#94a3b8">{edge.label}</text>
       )}
@@ -442,6 +503,16 @@ export default function NetworkTopology() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [selected, setSelected] = useState(null)
+
+  const { interfaces: liveIfaces } = useInterfacesWS(activeRouterId)
+
+  const trafficMap = useMemo(() => {
+    const map = {}
+    liveIfaces.forEach(i => {
+      map[i.name] = { rx_bps: i.rx_bps || 0, tx_bps: i.tx_bps || 0 }
+    })
+    return map
+  }, [liveIfaces])
 
   const svgRef = useRef(null)
   const [viewBox, setViewBox] = useState({ x: -500, y: -400, w: 1000, h: 800 })
@@ -595,10 +666,10 @@ export default function NetworkTopology() {
             width={viewBox.w + 4000} height={viewBox.h + 4000} fill="url(#grid)" />
 
           {edges.map((e, i) => (
-            <EdgeLine key={i} edge={e} nodes={nodes} />
+            <EdgeLine key={i} edge={e} nodes={nodes} trafficMap={trafficMap} />
           ))}
           {nodes.map(n => (
-            <NodeShape key={n.id} node={n} selected={selected?.id === n.id} onSelect={setSelected} />
+            <NodeShape key={n.id} node={n} selected={selected?.id === n.id} onSelect={setSelected} trafficMap={trafficMap} />
           ))}
         </svg>
 
