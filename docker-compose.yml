@@ -4,8 +4,8 @@ services:
     container_name: mikrotik-dev-pgadmin
     restart: unless-stopped
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@mimosa.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
     ports:
       - "5051:80"
     networks:
@@ -16,8 +16,8 @@ services:
     container_name: mikrotik-dev-backend
     restart: unless-stopped
     environment:
-      - JWT_SECRET=${JWT_SECRET:-supersecretkey123changeme}
-      - DATABASE_URL=postgresql://mikrotik:${DB_PASSWORD:-mikrotik_secret}@mikrotik-db:5432/mikrotik_dev
+      - JWT_SECRET=${JWT_SECRET}
+      - DATABASE_URL=postgresql://mikrotik:${DB_PASSWORD}@mikrotik-db:5432/mikrotik_dev
     networks:
       - shared-db
       - dev-network
