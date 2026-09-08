@@ -6,7 +6,7 @@ from typing import Optional
 from . import mikrotik
 from . import config as cfg_mod
 from . import database as db
-from .auth import create_access_token, get_current_user
+from .auth import create_access_token, get_current_user, require_admin
 
 router = APIRouter(prefix="/api")
 
@@ -78,6 +78,65 @@ def change_password(body: PasswordChangeRequest, user: dict = Depends(get_curren
         raise HTTPException(status_code=400, detail="Password baru minimal 4 karakter")
     db.update_user_password(user["id"], body.new_password)
     return {"success": True, "message": "Password berhasil diubah"}
+
+
+# ── Admin User Management (protected - admin only) ─────────
+
+class AdminUserCreate(BaseModel):
+    username: str
+    password: str
+    role: str = "user"
+
+
+class AdminUserUpdate(BaseModel):
+    role: str | None = None
+    password: str | None = None
+
+
+@router.get("/admin/users")
+def admin_list_users(admin: dict = Depends(require_admin)):
+    """List all users in the system."""
+    return db.list_users()
+
+
+@router.post("/admin/users")
+def admin_create_user(body: AdminUserCreate, admin: dict = Depends(require_admin)):
+    """Create a new user with a specified role."""
+    if len(body.username.strip()) < 3:
+        raise HTTPException(status_code=400, detail="Username minimal 3 karakter")
+    if len(body.password) < 4:
+        raise HTTPException(status_code=400, detail="Password minimal 4 karakter")
+    if body.role not in ("admin", "user"):
+        raise HTTPException(status_code=400, detail="Role harus 'admin' atau 'user'")
+    try:
+        new_id = db.create_user(body.username.strip(), body.password, body.role)
+        return {"success": True, "id": new_id, "username": body.username.strip(), "role": body.role}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.put("/admin/users/{user_id}")
+def admin_update_user(user_id: int, body: AdminUserUpdate, admin: dict = Depends(require_admin)):
+    """Update user role or reset password."""
+    if body.role and body.role not in ("admin", "user"):
+        raise HTTPException(status_code=400, detail="Role harus 'admin' atau 'user'")
+    if body.password and len(body.password) < 4:
+        raise HTTPException(status_code=400, detail="Password minimal 4 karakter")
+    ok = db.update_user_by_admin(user_id, role=body.role, password=body.password)
+    if not ok:
+        raise HTTPException(status_code=404, detail="User tidak ditemukan")
+    return {"success": True, "message": "User berhasil diperbarui"}
+
+
+@router.delete("/admin/users/{user_id}")
+def admin_delete_user(user_id: int, admin: dict = Depends(require_admin)):
+    """Delete user by ID (prevents self-deletion)."""
+    if admin["id"] == user_id:
+        raise HTTPException(status_code=400, detail="Tidak dapat menghapus akun sendiri")
+    ok = db.delete_user(user_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="User tidak ditemukan")
+    return {"success": True, "message": "User berhasil dihapus"}
 
 
 # ── Routers CRUD (protected) ──────────────────────────────

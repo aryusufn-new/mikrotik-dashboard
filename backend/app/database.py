@@ -164,6 +164,51 @@ def verify_password(plain: str, hashed: str) -> bool:
     return _pwd_ctx.verify(plain, hashed)
 
 
+def list_users() -> list[dict]:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT id, username, role, created_at FROM users ORDER BY id")
+            return [dict(r) for r in cur.fetchall()]
+    finally:
+        _put(conn)
+
+
+def update_user_by_admin(user_id: int, role: str | None = None, password: str | None = None) -> bool:
+    conn = _conn()
+    try:
+        with conn.cursor() as cur:
+            updates = []
+            values = []
+            if role is not None:
+                updates.append("role = %s")
+                values.append(role)
+            if password is not None:
+                updates.append("hashed_password = %s")
+                values.append(_pwd_ctx.hash(password))
+            if not updates:
+                return True
+            values.append(user_id)
+            set_clause = ", ".join(updates)
+            cur.execute(f"UPDATE users SET {set_clause} WHERE id = %s", values)
+            conn.commit()
+            return cur.rowcount > 0
+    finally:
+        _put(conn)
+
+
+def delete_user(user_id: int) -> bool:
+    conn = _conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM router_configs WHERE user_id = %s", (user_id,))
+            cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+            conn.commit()
+            return cur.rowcount > 0
+    finally:
+        _put(conn)
+
+
 def list_routers(user_id: int) -> list[dict]:
     conn = _conn()
     try:
