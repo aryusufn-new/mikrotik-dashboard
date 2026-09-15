@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from typing import Optional
@@ -55,14 +55,15 @@ class PasswordChangeRequest(BaseModel):
 
 
 @router.post("/auth/register")
-def register(body: RegisterRequest):
+def register(body: RegisterRequest, request: Request):
     """Register a new user."""
     if len(body.username.strip()) < 3:
         raise HTTPException(status_code=400, detail="Username minimal 3 karakter")
     if len(body.password) < 4:
         raise HTTPException(status_code=400, detail="Password minimal 4 karakter")
+    client_ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or request.client.host
     try:
-        user_id = db.create_user(body.username.strip(), body.password)
+        user_id = db.create_user(body.username.strip(), body.password, register_ip=client_ip)
         token = create_access_token({"sub": body.username.strip()})
         return {"access_token": token, "token_type": "bearer", "username": body.username.strip()}
     except ValueError as e:

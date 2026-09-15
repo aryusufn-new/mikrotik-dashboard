@@ -79,6 +79,14 @@ def init_db():
 
             cur.execute(
                 "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'users' AND column_name = 'register_ip'"
+            )
+            if cur.fetchone() is None:
+                cur.execute("ALTER TABLE users ADD COLUMN register_ip TEXT DEFAULT NULL")
+                conn.commit()
+
+            cur.execute(
+                "SELECT column_name FROM information_schema.columns "
                 "WHERE table_name = 'router_configs' AND column_name = 'name'"
             )
             if cur.fetchone() is None:
@@ -125,15 +133,15 @@ def get_user_by_id(user_id: int) -> dict | None:
         _put(conn)
 
 
-def create_user(username: str, password: str, role: str = "user") -> int:
+def create_user(username: str, password: str, role: str = "user", register_ip: str | None = None) -> int:
     conn = _conn()
     try:
         with conn.cursor() as cur:
             hashed = _pwd_ctx.hash(password)
             try:
                 cur.execute(
-                    "INSERT INTO users (username, hashed_password, role) VALUES (%s, %s, %s) RETURNING id",
-                    (username, hashed, role),
+                    "INSERT INTO users (username, hashed_password, role, register_ip) VALUES (%s, %s, %s, %s) RETURNING id",
+                    (username, hashed, role, register_ip),
                 )
                 new_id = cur.fetchone()[0]
                 conn.commit()
@@ -168,7 +176,7 @@ def list_users() -> list[dict]:
     conn = _conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT id, username, role, created_at FROM users ORDER BY id")
+            cur.execute("SELECT id, username, role, created_at, register_ip FROM users ORDER BY id")
             return [dict(r) for r in cur.fetchall()]
     finally:
         _put(conn)
