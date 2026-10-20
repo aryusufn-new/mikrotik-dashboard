@@ -729,7 +729,7 @@ def get_top_talkers(limit: int = 5, user_id: int | None = None, router_id: int |
     """Aggregate top client talkers across active Hotspot / PPPoE / Queues."""
     talkers: list[dict[str, Any]] = []
     with ros_api(user_id, router_id) as api:
-        # Check active hotspot users with byte counts
+        # 1. Check active hotspot users with byte counts
         try:
             for r in _path(api, "ip", "hotspot", "active"):
                 bin_val = _to_int(r.get("bytes-in")) or 0
@@ -747,22 +747,75 @@ def get_top_talkers(limit: int = 5, user_id: int | None = None, router_id: int |
         except Exception:
             pass
 
-        # If few/no hotspot, check active PPPoE
-        if len(talkers) < limit:
-            try:
-                for r in _path(api, "ppp", "active"):
-                    name = r.get("name")
+        # 2. Check active PPPoE sessions and retrieve their interface rx/tx bytes
+        try:
+            ppp_active_rows = list(_path(api, "ppp", "active"))
+            if ppp_active_rows:
+                # Map dynamic interfaces for PPPoE
+                iface_bytes_map: dict[str, tuple[int, int]] = {}
+                try:
+                    for iface in _path(api, "interface"):
+                        iname = iface.get("name", "")
+                        rx = _to_int(iface.get("rx-byte")) or 0
+                        tx = _to_int(iface.get("tx-byte")) or 0
+                        if iname:
+                            iface_bytes_map[iname] = (rx, tx)
+                except Exception:
+                    pass
+
+                # Also map simple queues as secondary fallback
+                queue_bytes_map: dict[str, tuple[int, int]] = {}
+                try:
+                    for q in _path(api, "queue", "simple"):
+                        qname = q.get("name", "")
+                        bytes_str = q.get("bytes", "")
+                        if qname and "/" in bytes_str:
+                            parts = bytes_str.split("/")
+                            q_rx = _to_int(parts[0]) or 0
+                            q_tx = _to_int(parts[1]) or 0
+                            queue_bytes_map[qname] = (q_rx, q_tx)
+                except Exception:
+                    pass
+
+                for r in ppp_active_rows:
+                    name = r.get("name") or "unknown"
+                    ip_addr = r.get("address")
+                    uptime = r.get("uptime")
+
+                    # Try matching interface: <pppoe-{name}> or search by name in interface names
+                    rx_b, tx_b = iface_bytes_map.get(f"<pppoe-{name}>") or (0, 0)
+                    if rx_b == 0 and tx_b == 0:
+                        rx_b, tx_b = iface_bytes_map.get(name) or (0, 0)
+                    if rx_b == 0 and tx_b == 0:
+                        for iname, (irx, itx) in iface_bytes_map.items():
+                            if name in iname:
+                                rx_b, tx_b = irx, itx
+                                break
+
+                    # If still 0, try queue_bytes_map
+                    if rx_b == 0 and tx_b == 0:
+                        rx_b, tx_b = queue_bytes_map.get(f"<pppoe-{name}>") or queue_bytes_map.get(name) or (0, 0)
+                        if rx_b == 0 and tx_b == 0:
+                            for qname, (qrx, qtx) in queue_bytes_map.items():
+                                if name in qname:
+                                    rx_b, tx_b = qrx, qtx
+                                    break
+
+                    # Router perspective:
+                    # tx-byte = transmitted to client (client download / bytes_in)
+                    # rx-byte = received from client (client upload / bytes_out)
+                    total_b = rx_b + tx_b
                     talkers.append({
-                        "name": name or "unknown",
-                        "ip": r.get("address"),
+                        "name": name,
+                        "ip": ip_addr,
                         "service": "PPPoE",
-                        "uptime": r.get("uptime"),
-                        "bytes_in": 0,
-                        "bytes_out": 0,
-                        "total_bytes": 0,
+                        "uptime": uptime,
+                        "bytes_in": tx_b,
+                        "bytes_out": rx_b,
+                        "total_bytes": total_b,
                     })
-            except Exception:
-                pass
+        except Exception:
+            pass
 
         # Sort by total_bytes descending
         talkers.sort(key=lambda x: x["total_bytes"], reverse=True)
