@@ -92,4 +92,8 @@ export const getNocPorts = () => http.get('/api/noc/ports').then(r => r.data)
 export const getNocTopDomains = (limit = 5) => http.get(`/api/noc/top-domains?limit=${limit}`).then(r => r.data)
 export const getNocTopTalkers = (limit = 5) => http.get(`/api/noc/top-talkers?limit=${limit}`).then(r => r.data)
 export const getNocPing = (host = '8.8.8.8') => http.get(`/api/noc/ping?host=${encodeURIComponent(host)}`).then(r => r.data)
+export const getNocIncidentLogs = (limit = 20) => http.get(`/api/noc/incident-logs?limit=${limit}`).then(r => r.data)
+export const getNocMultiPing = () => http.get('/api/noc/multi-ping').then(r => r.data)
+export const getNocDhcpConntrack = () => http.get('/api/noc/dhcp-conntrack').then(r => r.data)
+
 

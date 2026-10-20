@@ -399,3 +399,22 @@ def noc_ping(host: str = "8.8.8.8", count: int = 2, user: dict = Depends(get_cur
     """Live latency measurement."""
     return _safe(mikrotik.get_ping_latency, host, count, user["id"], router_id)
 
+
+@router.get("/noc/incident-logs")
+def noc_incident_logs(limit: int = 20, user: dict = Depends(get_current_user), router_id: int | None = Depends(_get_router_id)):
+    """Live warning, error, and critical logs feed."""
+    return _safe(mikrotik.get_incident_logs, limit, user["id"], router_id)
+
+
+@router.get("/noc/multi-ping")
+def noc_multi_ping(user: dict = Depends(get_current_user), router_id: int | None = Depends(_get_router_id)):
+    """Multi-target ping matrix (ISP Gateway, Cloudflare, Google)."""
+    return _safe(mikrotik.get_multi_ping, user["id"], router_id)
+
+
+@router.get("/noc/dhcp-conntrack")
+def noc_dhcp_conntrack(user: dict = Depends(get_current_user), router_id: int | None = Depends(_get_router_id)):
+    """DHCP IP pool and firewall connection tracking telemetry."""
+    return _safe(mikrotik.get_dhcp_and_conntrack, user["id"], router_id)
+
+

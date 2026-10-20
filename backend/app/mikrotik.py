@@ -846,15 +846,116 @@ def get_top_talkers(limit: int = 5, user_id: int | None = None, router_id: int |
         return talkers[:limit]
 
 
+def get_incident_logs(limit: int = 20, user_id: int | None = None, router_id: int | None = None) -> list[dict[str, Any]]:
+    """Retrieve recent warning, error, and critical log entries from /log."""
+    logs = []
+    with ros_api(user_id, router_id) as api:
+        try:
+            for r in _path(api, "log"):
+                topics = (r.get("topics") or "").lower()
+                if any(t in topics for t in ("error", "critical", "warning")):
+                    severity = "critical" if "critical" in topics else ("error" if "error" in topics else "warning")
+                    logs.append({
+                        "time": r.get("time"),
+                        "topics": r.get("topics"),
+                        "severity": severity,
+                        "message": r.get("message"),
+                    })
+        except Exception:
+            pass
+    logs = logs[-limit:]
+    logs.reverse()
+    return logs
+
+
+def get_multi_ping(user_id: int | None = None, router_id: int | None = None) -> list[dict[str, Any]]:
+    """Ping ISP default gateway, Cloudflare DNS, and Google DNS."""
+    gateway_ip = None
+    with ros_api(user_id, router_id) as api:
+        try:
+            for r in _path(api, "ip", "route"):
+                if r.get("dst-address") == "0.0.0.0/0" and _to_bool(r.get("active")):
+                    gw = r.get("gateway")
+                    if gw and "%" not in str(gw) and re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", str(gw)):
+                        gateway_ip = str(gw)
+                        break
+        except Exception:
+            pass
+
+    targets = [
+        {"name": "ISP Gateway", "host": gateway_ip or "192.168.1.1", "is_gateway": True},
+        {"name": "Cloudflare DNS", "host": "1.1.1.1", "is_gateway": False},
+        {"name": "Google DNS", "host": "8.8.8.8", "is_gateway": False},
+    ]
+
+    results = []
+    for t in targets:
+        p = get_ping_latency(t["host"], count=1, user_id=user_id, router_id=router_id)
+        results.append({
+            "name": t["name"],
+            "host": t["host"],
+            "latency_ms": p.get("latency_ms"),
+            "status": p.get("status", "down"),
+            "loss": p.get("packet_loss", 0),
+        })
+    return results
+
+
+def get_dhcp_and_conntrack(user_id: int | None = None, router_id: int | None = None) -> dict[str, Any]:
+    """Retrieve DHCP Pool utilization and Firewall Connection Tracking capacity."""
+    info = {
+        "dhcp_total_leases": 0,
+        "dhcp_bound_leases": 0,
+        "dhcp_pool_count": 0,
+        "dhcp_pools": [],
+        "conntrack_total": 0,
+        "conntrack_max": 65536,
+        "conntrack_pct": 0,
+    }
+    with ros_api(user_id, router_id) as api:
+        try:
+            pools = list(_path(api, "ip", "pool"))
+            info["dhcp_pool_count"] = len(pools)
+            for p in pools:
+                info["dhcp_pools"].append({
+                    "name": p.get("name"),
+                    "ranges": p.get("ranges"),
+                })
+        except Exception:
+            pass
+
+        try:
+            leases = list(_path(api, "ip", "dhcp-server", "lease"))
+            info["dhcp_total_leases"] = len(leases)
+            info["dhcp_bound_leases"] = sum(1 for l in leases if l.get("status") == "bound")
+        except Exception:
+            pass
+
+        try:
+            for ct in _path(api, "ip", "firewall", "connection", "tracking"):
+                tot = _to_int(ct.get("total-entries")) or 0
+                max_e = _to_int(ct.get("max-entries")) or 65536
+                info["conntrack_total"] = tot
+                info["conntrack_max"] = max_e
+                info["conntrack_pct"] = round((tot / max_e * 100), 1) if max_e > 0 else 0
+                break
+        except Exception:
+            pass
+    return info
+
+
 def get_noc_overview(user_id: int | None = None, router_id: int | None = None) -> dict[str, Any]:
     """Bundle high-priority NOC telemetry into single response for command center view."""
     res = get_system_resource(user_id, router_id)
     health = get_system_health(user_id, router_id)
     cpu_cores = get_cpu_cores(user_id, router_id)
     ping = get_ping_latency("8.8.8.8", count=1, user_id=user_id, router_id=router_id)
+    multi_ping = get_multi_ping(user_id, router_id)
     ports = get_ports_detail(user_id, router_id)
     top_domains = get_top_dns_domains(5, user_id, router_id)
     top_talkers = get_top_talkers(5, user_id, router_id)
+    incident_logs = get_incident_logs(15, user_id, router_id)
+    dhcp_conntrack = get_dhcp_and_conntrack(user_id, router_id)
 
     # Calculate aggregate port stats
     total_rx_drop = sum(p["rx_drop"] for p in ports)
@@ -869,6 +970,7 @@ def get_noc_overview(user_id: int | None = None, router_id: int | None = None) -
         "health": health,
         "cpu_cores": cpu_cores,
         "ping": ping,
+        "multi_ping": multi_ping,
         "ports": ports,
         "ports_summary": {
             "total": len(ports),
@@ -884,5 +986,8 @@ def get_noc_overview(user_id: int | None = None, router_id: int | None = None) -
         },
         "top_domains": top_domains,
         "top_talkers": top_talkers,
+        "incident_logs": incident_logs,
+        "dhcp_conntrack": dhcp_conntrack,
     }
+
 
