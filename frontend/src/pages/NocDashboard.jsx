@@ -41,10 +41,12 @@ export default function NocDashboard() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState(null)
   const [selectedPortName, setSelectedPortName] = useState(null)
+  const [selectedIface, setSelectedIface] = useState('')
   const [isFullscreen, setIsFullscreen] = useState(false)
 
   // Real-time interface traffic via WebSocket
   const { interfaces: wsInterfaces, totals, points } = useInterfacesWS(activeRouterId)
+  const { points: ifacePoints, last: ifaceTraffic } = useTrafficWS(selectedIface)
 
   const fetchTelemetry = async (isManual = false) => {
     if (!activeRouterId) return
@@ -102,6 +104,22 @@ export default function NocDashboard() {
     if (!selectedPortName) return null
     return mergedPorts.find((p) => p.name === selectedPortName) || null
   }, [selectedPortName, mergedPorts])
+
+  // Auto-select default WAN or first running interface
+  useEffect(() => {
+    if (!selectedIface && mergedPorts.length > 0) {
+      const defaultIface =
+        mergedPorts.find((p) => (p.comment && p.comment.toLowerCase().includes('wan')) || p.name.toLowerCase().includes('wan')) ||
+        mergedPorts.find((p) => p.name.toLowerCase() === 'ether1') ||
+        mergedPorts.find((p) => p.running) ||
+        mergedPorts[0]
+      if (defaultIface) setSelectedIface(defaultIface.name)
+    }
+  }, [mergedPorts, selectedIface])
+
+  const currentIfaceObj = useMemo(() => {
+    return mergedPorts.find((p) => p.name === selectedIface) || null
+  }, [mergedPorts, selectedIface])
 
   const res = nocData?.resource
   const health = nocData?.health
@@ -459,30 +477,46 @@ export default function NocDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Left (2 cols): Real-time Traffic Area Chart */}
         <div className="lg:col-span-2 bg-white rounded-2xl p-5 shadow-card border border-slate-100 flex flex-col justify-between">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <div>
               <div className="text-sm font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
                 <Activity size={16} className="text-violet-600" />
-                <span>Aggregate Network Throughput</span>
+                <span>Interface Throughput ({selectedIface || '-'})</span>
               </div>
-              <p className="text-xs text-slate-500">Live RX & TX aggregate bandwidth across all interfaces</p>
+              <p className="text-xs text-slate-500">Live RX & TX bandwidth interface terpilih langsung dari RouterOS</p>
             </div>
-            <div className="flex items-center gap-4 text-xs font-semibold">
-              <span className="flex items-center gap-1.5 text-sky-600">
-                <span className="w-2.5 h-2.5 rounded-full bg-sky-500 shadow-[0_0_6px_rgba(14,165,233,0.6)]" />
-                RX {formatBps(totals.rx_bps)}
-              </span>
-              <span className="flex items-center gap-1.5 text-orange-600">
-                <span className="w-2.5 h-2.5 rounded-full bg-orange-500 shadow-[0_0_6px_rgba(249,115,22,0.6)]" />
-                TX {formatBps(totals.tx_bps)}
-              </span>
+
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Dropdown Interface Selector */}
+              <select
+                value={selectedIface}
+                onChange={(e) => setSelectedIface(e.target.value)}
+                className="bg-slate-50 hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-400 cursor-pointer max-w-[220px] truncate"
+              >
+                {mergedPorts.map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.name} {p.running ? '● Up' : '○ Down'} {p.comment ? `— ${p.comment}` : ''}
+                  </option>
+                ))}
+              </select>
+
+              <div className="flex items-center gap-3 text-xs font-semibold">
+                <span className="flex items-center gap-1.5 text-sky-600">
+                  <span className="w-2.5 h-2.5 rounded-full bg-sky-500 shadow-[0_0_6px_rgba(14,165,233,0.6)] animate-pulse" />
+                  RX {formatBps(ifaceTraffic.rx_bps)}
+                </span>
+                <span className="flex items-center gap-1.5 text-orange-600">
+                  <span className="w-2.5 h-2.5 rounded-full bg-orange-500 shadow-[0_0_6px_rgba(249,115,22,0.6)] animate-pulse" />
+                  TX {formatBps(ifaceTraffic.tx_bps)}
+                </span>
+              </div>
             </div>
           </div>
 
           {/* Area Chart */}
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={points} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <AreaChart data={ifacePoints} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="rxGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.4} />
@@ -507,10 +541,10 @@ export default function NocDashboard() {
             </ResponsiveContainer>
           </div>
 
-          <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-            <span>Interface Aktif: <strong className="text-slate-700">{totals.running}</strong> running</span>
-            <span>Total Downstream: <strong className="text-sky-600">{formatBps(totals.rx_bps)}</strong></span>
-            <span>Total Upstream: <strong className="text-orange-600">{formatBps(totals.tx_bps)}</strong></span>
+          <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+            <span>Port: <strong className="text-slate-800">{selectedIface || '-'}</strong> ({currentIfaceObj?.running ? 'Running' : 'Down'})</span>
+            <span>Speed: <strong className="text-slate-700">{currentIfaceObj?.speed || '1 Gbps'}</strong></span>
+            <span>Total Akumulasi: <strong className="text-sky-600">↓ {formatBytes(currentIfaceObj?.rx_byte)}</strong> / <strong className="text-orange-600">↑ {formatBytes(currentIfaceObj?.tx_byte)}</strong></span>
           </div>
         </div>
 
