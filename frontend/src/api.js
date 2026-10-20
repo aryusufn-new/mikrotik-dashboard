@@ -79,3 +79,17 @@ export const getTopology = () => http.get('/api/topology').then(r => r.data)
 export const getConfig = () => http.get('/api/config').then(r => r.data)
 export const updateConfig = (data) => http.put('/api/config', data).then(r => r.data)
 export const testConnection = () => http.post('/api/config/test').then(r => r.data)
+
+// Admin
+export const getAuditLogs = () => http.get('/api/admin/logs').then(r => r.data)
+export const getAdminUsers = () => http.get('/api/admin/users').then(r => r.data)
+
+// NOC Monitoring
+export const getNocOverview = () => http.get('/api/noc/overview').then(r => r.data)
+export const getNocHealth = () => http.get('/api/noc/health').then(r => r.data)
+export const getNocCpuCores = () => http.get('/api/noc/cpu-cores').then(r => r.data)
+export const getNocPorts = () => http.get('/api/noc/ports').then(r => r.data)
+export const getNocTopDomains = (limit = 5) => http.get(`/api/noc/top-domains?limit=${limit}`).then(r => r.data)
+export const getNocTopTalkers = (limit = 5) => http.get(`/api/noc/top-talkers?limit=${limit}`).then(r => r.data)
+export const getNocPing = (host = '8.8.8.8') => http.get(`/api/noc/ping?host=${encodeURIComponent(host)}`).then(r => r.data)
+

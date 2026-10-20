@@ -1,10 +1,11 @@
 import React from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { Activity, ChevronDown, Cpu, LogOut, Network, Router, Settings, Users, Wifi } from 'lucide-react'
+import { Activity, ChevronDown, Cpu, LogOut, Network, Radio, Router, Settings, Shield, ScrollText, Users, Wifi } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useRouter } from '../context/RouterContext'
 
 const monitorItems = [
+  { to: '/noc', label: 'NOC Dashboard', icon: Radio },
   { to: '/device', label: 'Device Monitor', icon: Cpu },
   { to: '/interfaces', label: 'Interface Traffic', icon: Activity },
   { to: '/pppoe', label: 'PPPoE Monitor', icon: Users },
@@ -14,6 +15,10 @@ const monitorItems = [
 
 const settingsItems = [
   { to: '/config', label: 'Konfigurasi', icon: Settings },
+]
+
+const adminItems = [
+  { to: '/admin/logs', label: 'Audit Logs', icon: ScrollText },
 ]
 
 export default function Sidebar({ onNavigate }) {
@@ -132,6 +137,34 @@ export default function Sidebar({ onNavigate }) {
           </NavLink>
         ))}
       </nav>
+
+      {user?.role === 'admin' && (
+        <>
+          <div className="text-[11px] uppercase tracking-wider text-slate-400 px-2 mt-6 mb-2">
+            Admin
+          </div>
+          <nav className="space-y-1">
+            {adminItems.map(({ to, label, icon: Icon }) => (
+              <NavLink
+                key={to}
+                to={to}
+                onClick={onNavigate}
+                className={({ isActive }) =>
+                  [
+                    'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition',
+                    isActive
+                      ? 'bg-brand-purple/10 text-brand-purple font-medium'
+                      : 'text-slate-600 hover:bg-slate-100',
+                  ].join(' ')
+                }
+              >
+                <Icon size={18} />
+                <span>{label}</span>
+              </NavLink>
+            ))}
+          </nav>
+        </>
+      )}
 
       <div className="mt-auto pt-4 border-t border-slate-100">
         <div className="flex items-center justify-between px-3 py-2">

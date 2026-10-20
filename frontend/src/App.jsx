@@ -7,11 +7,13 @@ import ErrorBoundary from './components/ErrorBoundary'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import DeviceMonitor from './pages/DeviceMonitor'
+import NocDashboard from './pages/NocDashboard'
 import InterfaceTraffic from './pages/InterfaceTraffic'
 import PppoeMonitor from './pages/PppoeMonitor'
 import HotspotMonitor from './pages/HotspotMonitor'
 import ConfigPage from './pages/ConfigPage'
 import NetworkTopology from './pages/NetworkTopology'
+import AdminLogs from './pages/AdminLogs'
 
 function Wrap({ children }) {
   return <ErrorBoundary>{children}</ErrorBoundary>
@@ -27,7 +29,7 @@ function RequireAuth({ children }) {
 function GuestOnly({ children }) {
   const { token, loading } = useAuth()
   if (loading) return null
-  if (token) return <Navigate to="/device" replace />
+  if (token) return <Navigate to="/noc" replace />
   return children
 }
 
@@ -40,14 +42,16 @@ export default function App() {
             <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
             <Route path="/register" element={<GuestOnly><RegisterPage /></GuestOnly>} />
             <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
-              <Route index element={<Navigate to="/device" replace />} />
+              <Route index element={<Navigate to="/noc" replace />} />
+              <Route path="/noc" element={<Wrap><NocDashboard /></Wrap>} />
               <Route path="/device" element={<Wrap><DeviceMonitor /></Wrap>} />
               <Route path="/interfaces" element={<Wrap><InterfaceTraffic /></Wrap>} />
               <Route path="/pppoe" element={<Wrap><PppoeMonitor /></Wrap>} />
               <Route path="/hotspot" element={<Wrap><HotspotMonitor /></Wrap>} />
               <Route path="/topology" element={<Wrap><NetworkTopology /></Wrap>} />
               <Route path="/config" element={<Wrap><ConfigPage /></Wrap>} />
-              <Route path="*" element={<Navigate to="/device" replace />} />
+              <Route path="/admin/logs" element={<Wrap><AdminLogs /></Wrap>} />
+              <Route path="*" element={<Navigate to="/noc" replace />} />
             </Route>
           </Routes>
         </RouterProvider>

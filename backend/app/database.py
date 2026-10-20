@@ -55,6 +55,17 @@ def init_db():
                     role TEXT NOT NULL DEFAULT 'user',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id),
+                    action TEXT NOT NULL,
+                    endpoint TEXT NOT NULL,
+                    target TEXT,
+                    details JSONB,
+                    user_agent TEXT,
+                    ip_address TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
             """)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS router_configs (
@@ -213,6 +224,31 @@ def delete_user(user_id: int) -> bool:
             cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
             conn.commit()
             return cur.rowcount > 0
+    finally:
+        _put(conn)
+
+def log_audit(user_id: int, action: str, endpoint: str, target: str | None = None, details: dict | None = None, user_agent: str | None = None, ip_address: str | None = None):
+    conn = _conn()
+    try:
+        with conn.cursor() as cur:
+            import json
+            cur.execute(
+                "INSERT INTO audit_logs (user_id, action, endpoint, target, details, user_agent, ip_address) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (user_id, action, endpoint, target, json.dumps(details) if details else None, user_agent, ip_address),
+            )
+            conn.commit()
+    finally:
+        _put(conn)
+
+
+def list_audit_logs() -> list[dict]:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT l.*, u.username FROM audit_logs l JOIN users u ON l.user_id = u.id ORDER BY l.created_at DESC LIMIT 500"
+            )
+            return [dict(r) for r in cur.fetchall()]
     finally:
         _put(conn)
 

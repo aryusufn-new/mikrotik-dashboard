@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import os
+import re
 import threading
+from collections import Counter
 from contextlib import contextmanager
 from typing import Any, Iterable
 
@@ -521,3 +523,289 @@ def monitor_ppp_traffic(ifaces: list[str], user_id: int | None = None, router_id
                 result[iface] = {"rx_bps": 0, "tx_bps": 0}
     
     return result
+
+
+def get_system_health(user_id: int | None = None, router_id: int | None = None) -> dict[str, Any]:
+    """Fetch hardware health (temperature, voltage, fan) from /system/health."""
+    health: dict[str, Any] = {
+        "temperature": None,
+        "cpu_temperature": None,
+        "board_temperature": None,
+        "voltage": None,
+        "current": None,
+        "power_consumption": None,
+        "fan_speed": None,
+    }
+    with ros_api(user_id, router_id) as api:
+        try:
+            for r in _path(api, "system", "health"):
+                name = r.get("name")
+                val = r.get("value")
+                if name and val is not None:
+                    # RouterOS v6 key-value format
+                    k = name.lower().replace("-", "_")
+                    if k in health:
+                        health[k] = val
+                    elif "cpu" in k and "temp" in k:
+                        health["cpu_temperature"] = val
+                    elif "temp" in k:
+                        health["temperature"] = val
+                    elif "volt" in k:
+                        health["voltage"] = val
+                    elif "fan" in k:
+                        health["fan_speed"] = val
+                else:
+                    # RouterOS v7 direct key format
+                    for k, v in r.items():
+                        clean_k = k.lower().replace("-", "_")
+                        if clean_k in health and v is not None:
+                            health[clean_k] = v
+                        elif "cpu" in clean_k and "temp" in clean_k:
+                            health["cpu_temperature"] = v
+                        elif "board" in clean_k and "temp" in clean_k:
+                            health["board_temperature"] = v
+                        elif "temp" in clean_k and health["temperature"] is None:
+                            health["temperature"] = v
+                        elif "volt" in clean_k:
+                            health["voltage"] = v
+                        elif "fan" in clean_k:
+                            health["fan_speed"] = v
+        except Exception:
+            pass
+    return health
+
+
+def get_cpu_cores(user_id: int | None = None, router_id: int | None = None) -> list[dict[str, Any]]:
+    """Fetch per-core CPU load from /system/resource/cpu."""
+    cores: list[dict[str, Any]] = []
+    with ros_api(user_id, router_id) as api:
+        try:
+            for idx, r in enumerate(_path(api, "system", "resource", "cpu")):
+                core_id = _to_int(r.get("cpu")) if r.get("cpu") is not None else idx
+                load = _to_int(r.get("load")) or 0
+                cores.append({"core": core_id, "load": load})
+        except Exception:
+            pass
+    return cores
+
+
+def get_ports_detail(user_id: int | None = None, router_id: int | None = None) -> list[dict[str, Any]]:
+    """Fetch detailed interface port statistics including drops, errors, packets, and link info."""
+    with ros_api(user_id, router_id) as api:
+        # Get ethernet link speed info if available
+        eth_speed_map: dict[str, dict[str, Any]] = {}
+        try:
+            for eth in _path(api, "interface", "ethernet"):
+                name = eth.get("name")
+                if name:
+                    eth_speed_map[name] = {
+                        "speed": eth.get("speed") or eth.get("orig-speed") or eth.get("auto-negotiation"),
+                        "full_duplex": _to_bool(eth.get("full-duplex")),
+                        "sfp": "sfp" in name.lower(),
+                    }
+        except Exception:
+            pass
+
+        rows: Iterable[dict] = _path(api, "interface")
+        ports = []
+        for r in rows:
+            name = r.get("name", "")
+            iface_type = r.get("type", "")
+            eth_info = eth_speed_map.get(name, {})
+
+            ports.append({
+                "name": name,
+                "type": iface_type,
+                "running": _to_bool(r.get("running")),
+                "disabled": _to_bool(r.get("disabled")),
+                "comment": r.get("comment"),
+                "mac_address": r.get("mac-address"),
+                "rx_byte": _to_int(r.get("rx-byte")) or 0,
+                "tx_byte": _to_int(r.get("tx-byte")) or 0,
+                "rx_packet": _to_int(r.get("rx-packet")) or 0,
+                "tx_packet": _to_int(r.get("tx-packet")) or 0,
+                "rx_drop": _to_int(r.get("rx-drop")) or 0,
+                "tx_drop": _to_int(r.get("tx-drop")) or 0,
+                "rx_error": _to_int(r.get("rx-error")) or 0,
+                "tx_error": _to_int(r.get("tx-error")) or 0,
+                "speed": eth_info.get("speed"),
+                "full_duplex": eth_info.get("full_duplex"),
+                "is_ethernet": iface_type in ("ether", "sfp", "sfp-plus") or "ether" in name.lower() or "sfp" in name.lower(),
+            })
+        return ports
+
+
+def get_ping_latency(host: str = "8.8.8.8", count: int = 2, user_id: int | None = None, router_id: int | None = None) -> dict[str, Any]:
+    """Execute ping from router to test uplink latency."""
+    res = {"host": host, "latency_ms": None, "packet_loss": 0, "status": "down"}
+    with ros_api(user_id, router_id) as api:
+        try:
+            cmd = api.rawCmd(
+                "/ping",
+                f"=address={host}",
+                f"=count={count}",
+            )
+            latencies = []
+            received = 0
+            sent = 0
+            for row in cmd:
+                sent += 1
+                rtt = row.get("time") or row.get("avg-rtt")
+                if rtt:
+                    received += 1
+                    # Parse '12ms' or '12ms450us' or direct number
+                    m = re.search(r"(\d+(?:\.\d+)?)ms", str(rtt))
+                    if m:
+                        latencies.append(float(m.group(1)))
+                    else:
+                        val = _to_int(rtt)
+                        if val is not None:
+                            latencies.append(float(val))
+
+            if latencies:
+                res["latency_ms"] = round(sum(latencies) / len(latencies), 1)
+                res["status"] = "online"
+            loss = int(((sent - received) / max(1, sent)) * 100) if sent > 0 else 100
+            res["packet_loss"] = loss
+            if received > 0 and res["status"] != "online":
+                res["status"] = "online"
+        except Exception as e:
+            res["error"] = str(e)
+    return res
+
+
+def _extract_root_domain(name: str) -> str | None:
+    """Normalize and extract root/parent domain from DNS cache name."""
+    if not name or "." not in name:
+        return None
+    name = name.strip().lower().rstrip(".")
+    # Ignore reverse DNS and local domains
+    if name.endswith((".in-addr.arpa", ".ip6.arpa", ".arpa", ".local", ".lan", ".home")):
+        return None
+    # Ignore direct IP
+    if re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", name):
+        return None
+
+    parts = name.split(".")
+    if len(parts) <= 2:
+        return name
+
+    # Two-part TLDs (co.id, go.id, or.id, ac.id, com.br, etc.)
+    two_part_tlds = {"co.id", "ac.id", "go.id", "or.id", "web.id", "sch.id", "my.id", "com.br", "co.uk"}
+    last_two = f"{parts[-2]}.{parts[-1]}"
+    if last_two in two_part_tlds and len(parts) >= 3:
+        return f"{parts[-3]}.{last_two}"
+    return f"{parts[-2]}.{parts[-1]}"
+
+
+def get_top_dns_domains(limit: int = 5, user_id: int | None = None, router_id: int | None = None) -> list[dict[str, Any]]:
+    """Fetch DNS cache and compute top accessed root domains."""
+    with ros_api(user_id, router_id) as api:
+        counter: Counter[str] = Counter()
+        try:
+            for r in _path(api, "ip", "dns", "cache"):
+                raw_name = r.get("name")
+                if raw_name:
+                    root = _extract_root_domain(raw_name)
+                    if root:
+                        counter[root] += 1
+        except Exception:
+            pass
+
+        total_hits = sum(counter.values())
+        top = counter.most_common(limit)
+        result = []
+        for domain, count in top:
+            pct = round((count / total_hits * 100), 1) if total_hits > 0 else 0
+            result.append({
+                "domain": domain,
+                "hits": count,
+                "percentage": pct,
+            })
+        return result
+
+
+def get_top_talkers(limit: int = 5, user_id: int | None = None, router_id: int | None = None) -> list[dict[str, Any]]:
+    """Aggregate top client talkers across active Hotspot / PPPoE / Queues."""
+    talkers: list[dict[str, Any]] = []
+    with ros_api(user_id, router_id) as api:
+        # Check active hotspot users with byte counts
+        try:
+            for r in _path(api, "ip", "hotspot", "active"):
+                bin_val = _to_int(r.get("bytes-in")) or 0
+                bout_val = _to_int(r.get("bytes-out")) or 0
+                total_b = bin_val + bout_val
+                talkers.append({
+                    "name": r.get("user") or "unknown",
+                    "ip": r.get("address"),
+                    "service": "Hotspot",
+                    "uptime": r.get("uptime"),
+                    "bytes_in": bin_val,
+                    "bytes_out": bout_val,
+                    "total_bytes": total_b,
+                })
+        except Exception:
+            pass
+
+        # If few/no hotspot, check active PPPoE
+        if len(talkers) < limit:
+            try:
+                for r in _path(api, "ppp", "active"):
+                    name = r.get("name")
+                    talkers.append({
+                        "name": name or "unknown",
+                        "ip": r.get("address"),
+                        "service": "PPPoE",
+                        "uptime": r.get("uptime"),
+                        "bytes_in": 0,
+                        "bytes_out": 0,
+                        "total_bytes": 0,
+                    })
+            except Exception:
+                pass
+
+        # Sort by total_bytes descending
+        talkers.sort(key=lambda x: x["total_bytes"], reverse=True)
+        return talkers[:limit]
+
+
+def get_noc_overview(user_id: int | None = None, router_id: int | None = None) -> dict[str, Any]:
+    """Bundle high-priority NOC telemetry into single response for command center view."""
+    res = get_system_resource(user_id, router_id)
+    health = get_system_health(user_id, router_id)
+    cpu_cores = get_cpu_cores(user_id, router_id)
+    ping = get_ping_latency("8.8.8.8", count=1, user_id=user_id, router_id=router_id)
+    ports = get_ports_detail(user_id, router_id)
+    top_domains = get_top_dns_domains(5, user_id, router_id)
+    top_talkers = get_top_talkers(5, user_id, router_id)
+
+    # Calculate aggregate port stats
+    total_rx_drop = sum(p["rx_drop"] for p in ports)
+    total_tx_drop = sum(p["tx_drop"] for p in ports)
+    total_rx_error = sum(p["rx_error"] for p in ports)
+    total_tx_error = sum(p["tx_error"] for p in ports)
+    total_rx_packets = sum(p["rx_packet"] for p in ports)
+    total_tx_packets = sum(p["tx_packet"] for p in ports)
+
+    return {
+        "resource": res,
+        "health": health,
+        "cpu_cores": cpu_cores,
+        "ping": ping,
+        "ports": ports,
+        "ports_summary": {
+            "total": len(ports),
+            "running": sum(1 for p in ports if p["running"]),
+            "down": sum(1 for p in ports if not p["running"] and not p["disabled"]),
+            "disabled": sum(1 for p in ports if p["disabled"]),
+            "rx_drop": total_rx_drop,
+            "tx_drop": total_tx_drop,
+            "rx_error": total_rx_error,
+            "tx_error": total_tx_error,
+            "rx_packet": total_rx_packets,
+            "tx_packet": total_tx_packets,
+        },
+        "top_domains": top_domains,
+        "top_talkers": top_talkers,
+    }
+
