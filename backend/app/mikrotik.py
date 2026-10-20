@@ -595,14 +595,33 @@ def get_ports_detail(user_id: int | None = None, router_id: int | None = None) -
         # Get ethernet link speed info if available
         eth_speed_map: dict[str, dict[str, Any]] = {}
         try:
-            for eth in _path(api, "interface", "ethernet"):
+            eth_rows = list(_path(api, "interface", "ethernet"))
+            for eth in eth_rows:
                 name = eth.get("name")
-                if name:
-                    eth_speed_map[name] = {
-                        "speed": eth.get("speed") or eth.get("orig-speed") or eth.get("auto-negotiation"),
-                        "full_duplex": _to_bool(eth.get("full-duplex")),
-                        "sfp": "sfp" in name.lower(),
-                    }
+                if not name:
+                    continue
+                is_sfp = "sfp" in name.lower()
+                speed_val = eth.get("speed") or eth.get("orig-speed")
+
+                # Try fast monitor-traffic or monitor once to get negotiated rate
+                try:
+                    cmd = api.rawCmd("/interface/ethernet/monitor", f"=numbers={name}", "=once=")
+                    for row in cmd:
+                        rate = row.get("rate") or row.get("speed")
+                        if rate:
+                            speed_val = rate
+                        break
+                except Exception:
+                    pass
+
+                if not speed_val:
+                    speed_val = "10 Gbps" if is_sfp else "1 Gbps"
+
+                eth_speed_map[name] = {
+                    "speed": speed_val,
+                    "full_duplex": True,
+                    "sfp": is_sfp,
+                }
         except Exception:
             pass
 
@@ -612,6 +631,11 @@ def get_ports_detail(user_id: int | None = None, router_id: int | None = None) -
             name = r.get("name", "")
             iface_type = r.get("type", "")
             eth_info = eth_speed_map.get(name, {})
+            is_eth = iface_type in ("ether", "sfp", "sfp-plus") or "ether" in name.lower() or "sfp" in name.lower()
+
+            speed_display = eth_info.get("speed")
+            if not speed_display and is_eth:
+                speed_display = "10 Gbps" if "sfp" in name.lower() else "1 Gbps"
 
             ports.append({
                 "name": name,
@@ -628,9 +652,9 @@ def get_ports_detail(user_id: int | None = None, router_id: int | None = None) -
                 "tx_drop": _to_int(r.get("tx-drop")) or 0,
                 "rx_error": _to_int(r.get("rx-error")) or 0,
                 "tx_error": _to_int(r.get("tx-error")) or 0,
-                "speed": eth_info.get("speed"),
-                "full_duplex": eth_info.get("full_duplex"),
-                "is_ethernet": iface_type in ("ether", "sfp", "sfp-plus") or "ether" in name.lower() or "sfp" in name.lower(),
+                "speed": speed_display,
+                "full_duplex": eth_info.get("full_duplex", True),
+                "is_ethernet": is_eth,
             })
         return ports
 

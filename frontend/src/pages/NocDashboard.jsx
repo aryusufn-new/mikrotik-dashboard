@@ -31,6 +31,7 @@ import {
 import { useRouter } from '../context/RouterContext'
 import { getNocOverview, getNocTopDomains } from '../api'
 import useInterfacesWS from '../hooks/useInterfacesWS'
+import useTrafficWS from '../hooks/useTrafficWS'
 import { formatBps, formatBytes, formatUptime } from '../utils/format'
 
 export default function NocDashboard() {
@@ -39,7 +40,7 @@ export default function NocDashboard() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState(null)
-  const [selectedPort, setSelectedPort] = useState(null)
+  const [selectedPortName, setSelectedPortName] = useState(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
 
   // Real-time interface traffic via WebSocket
@@ -96,6 +97,11 @@ export default function NocDashboard() {
       }
     })
   }, [nocData?.ports, wsInterfaces])
+
+  const selectedPort = useMemo(() => {
+    if (!selectedPortName) return null
+    return mergedPorts.find((p) => p.name === selectedPortName) || null
+  }, [selectedPortName, mergedPorts])
 
   const res = nocData?.resource
   const health = nocData?.health
@@ -385,7 +391,7 @@ export default function NocDashboard() {
             return (
               <div
                 key={port.name}
-                onClick={() => setSelectedPort(port)}
+                onClick={() => setSelectedPortName(port.name)}
                 className={`group relative p-3 rounded-xl border transition-all cursor-pointer select-none ${
                   isUp
                     ? 'bg-slate-900 border-slate-700 hover:border-emerald-500/80 shadow-md'
@@ -662,80 +668,100 @@ export default function NocDashboard() {
 
       {/* ── Modal Dialog: Port Detail Inspector ── */}
       {selectedPort && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-5 border border-slate-200">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <span
-                  className={`w-3 h-3 rounded-full ${
-                    selectedPort.running ? 'bg-emerald-500' : 'bg-rose-500'
-                  }`}
-                />
-                <h3 className="font-bold text-base text-slate-800">{selectedPort.name}</h3>
-                <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-mono">
-                  {selectedPort.type}
-                </span>
-              </div>
-              <button
-                onClick={() => setSelectedPort(null)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-semibold"
-              >
-                ✕
-              </button>
-            </div>
+        <PortDetailModal
+          port={selectedPort}
+          onClose={() => setSelectedPortName(null)}
+        />
+      )}
+    </div>
+  )
+}
 
-            <div className="mt-4 space-y-2.5 text-xs">
-              <div className="flex justify-between py-1 border-b border-slate-50">
-                <span className="text-slate-400">Link Status</span>
-                <span className={`font-semibold ${selectedPort.running ? 'text-emerald-600' : 'text-rose-600'}`}>
-                  {selectedPort.running ? 'LINK UP (Running)' : 'LINK DOWN'}
-                </span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-50">
-                <span className="text-slate-400">Negotiated Speed</span>
-                <span className="font-semibold text-slate-700">{selectedPort.speed || '1 Gbps (Auto)'}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-50">
-                <span className="text-slate-400">MAC Address</span>
-                <span className="font-mono text-slate-700">{selectedPort.mac_address || '-'}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-50">
-                <span className="text-slate-400">Current Traffic</span>
-                <span className="font-semibold text-slate-700">
-                  ↓ {formatBps(selectedPort.rx_bps || 0)} / ↑ {formatBps(selectedPort.tx_bps || 0)}
-                </span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-50">
-                <span className="text-slate-400">Total RX/TX Bytes</span>
-                <span className="text-slate-700">
-                  {formatBytes(selectedPort.rx_byte)} / {formatBytes(selectedPort.tx_byte)}
-                </span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-50">
-                <span className="text-slate-400">Packet Drops</span>
-                <span className={`font-semibold ${selectedPort.rx_drop > 0 || selectedPort.tx_drop > 0 ? 'text-amber-600' : 'text-slate-700'}`}>
-                  RX: {selectedPort.rx_drop} · TX: {selectedPort.tx_drop}
-                </span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-50">
-                <span className="text-slate-400">Packet Errors</span>
-                <span className={`font-semibold ${selectedPort.rx_error > 0 || selectedPort.tx_error > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
-                  RX: {selectedPort.rx_error} · TX: {selectedPort.tx_error}
-                </span>
-              </div>
-            </div>
+function PortDetailModal({ port, onClose }) {
+  const { last: liveTraffic } = useTrafficWS(port.name)
+  const rx = liveTraffic?.rx_bps > 0 ? liveTraffic.rx_bps : (port.rx_bps || 0)
+  const tx = liveTraffic?.tx_bps > 0 ? liveTraffic.tx_bps : (port.tx_bps || 0)
 
-            <div className="mt-5 pt-3 border-t border-slate-100 flex justify-end">
-              <button
-                onClick={() => setSelectedPort(null)}
-                className="px-4 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition"
-              >
-                Tutup
-              </button>
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-5 border border-slate-200">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <span
+              className={`w-3 h-3 rounded-full ${
+                port.running ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse' : 'bg-rose-500'
+              }`}
+            />
+            <h3 className="font-bold text-base text-slate-800">{port.name}</h3>
+            <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-mono">
+              {port.type}
+            </span>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-600 text-sm font-semibold p-1"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="mt-4 space-y-2.5 text-xs">
+          <div className="flex justify-between py-1 border-b border-slate-50">
+            <span className="text-slate-400">Link Status</span>
+            <span className={`font-semibold ${port.running ? 'text-emerald-600' : 'text-rose-600'}`}>
+              {port.running ? 'LINK UP (Running)' : 'LINK DOWN'}
+            </span>
+          </div>
+          <div className="flex justify-between py-1 border-b border-slate-50">
+            <span className="text-slate-400">Negotiated Speed</span>
+            <span className="font-semibold text-slate-700">{port.speed || '1 Gbps (Full Duplex)'}</span>
+          </div>
+          <div className="flex justify-between py-1 border-b border-slate-50">
+            <span className="text-slate-400">MAC Address</span>
+            <span className="font-mono text-slate-700">{port.mac_address || '-'}</span>
+          </div>
+          <div className="flex justify-between py-1 border-b border-slate-50 items-center">
+            <span className="text-slate-400">Current Live Traffic</span>
+            <div className="flex items-center gap-3 font-semibold text-slate-700">
+              <span className="text-sky-600 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-sky-500 animate-ping" />
+                ↓ {formatBps(rx)}
+              </span>
+              <span className="text-orange-600 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-orange-500 animate-ping" />
+                ↑ {formatBps(tx)}
+              </span>
             </div>
           </div>
+          <div className="flex justify-between py-1 border-b border-slate-50">
+            <span className="text-slate-400">Total Cumulative RX/TX</span>
+            <span className="text-slate-700 font-medium">
+              ↓ {formatBytes(port.rx_byte)} / ↑ {formatBytes(port.tx_byte)}
+            </span>
+          </div>
+          <div className="flex justify-between py-1 border-b border-slate-50">
+            <span className="text-slate-400">Packet Drops</span>
+            <span className={`font-semibold ${port.rx_drop > 0 || port.tx_drop > 0 ? 'text-amber-600' : 'text-slate-700'}`}>
+              RX: {port.rx_drop} · TX: {port.tx_drop}
+            </span>
+          </div>
+          <div className="flex justify-between py-1 border-b border-slate-50">
+            <span className="text-slate-400">Packet Errors</span>
+            <span className={`font-semibold ${port.rx_error > 0 || port.tx_error > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
+              RX: {port.rx_error} · TX: {port.tx_error}
+            </span>
+          </div>
         </div>
-      )}
+
+        <div className="mt-5 pt-3 border-t border-slate-100 flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition"
+          >
+            Tutup
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
