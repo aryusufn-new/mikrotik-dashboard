@@ -32,10 +32,10 @@ function RouterCard({ router, isActive, onSelect, onEdit, onDelete, onTest }) {
   return (
     <div
       className={[
-        'bg-white rounded-2xl shadow-card p-5 border-2 transition-all cursor-pointer hover:shadow-lg group',
+        'bg-white dark:bg-slate-900 rounded-2xl shadow-card dark:shadow-none p-5 border-2 transition-all cursor-pointer hover:shadow-lg group',
         isActive
           ? 'border-brand-purple ring-2 ring-brand-purple/20'
-          : 'border-transparent hover:border-slate-200',
+          : 'border-transparent dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700',
       ].join(' ')}
       onClick={() => onSelect(router.id)}
     >
@@ -46,14 +46,14 @@ function RouterCard({ router, isActive, onSelect, onEdit, onDelete, onTest }) {
               'w-10 h-10 rounded-xl flex items-center justify-center transition',
               isActive
                 ? 'bg-brand-purple text-white'
-                : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200',
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 group-hover:bg-slate-200 dark:group-hover:bg-slate-700',
             ].join(' ')}
           >
             <Router size={20} />
           </div>
           <div>
-            <div className="font-semibold text-slate-800">{router.name}</div>
-            <div className="text-xs text-slate-400 mt-0.5">
+            <div className="font-semibold text-slate-800 dark:text-slate-100">{router.name}</div>
+            <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
               {router.host}:{router.port}
             </div>
           </div>
@@ -65,8 +65,8 @@ function RouterCard({ router, isActive, onSelect, onEdit, onDelete, onTest }) {
         )}
       </div>
 
-      <div className="text-xs text-slate-500 mb-3">
-        <span className="text-slate-400">User:</span> {router.username}
+      <div className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+        <span className="text-slate-400 dark:text-slate-500">User:</span> {router.username}
       </div>
 
       {/* Test result */}
@@ -74,8 +74,8 @@ function RouterCard({ router, isActive, onSelect, onEdit, onDelete, onTest }) {
         <div
           className={`mb-3 rounded-lg px-3 py-2 text-xs flex items-center gap-1.5 ${
             testResult.success
-              ? 'bg-emerald-50 text-emerald-700'
-              : 'bg-rose-50 text-rose-700'
+              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/60'
+              : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/60'
           }`}
         >
           {testResult.success ? (
@@ -92,11 +92,11 @@ function RouterCard({ router, isActive, onSelect, onEdit, onDelete, onTest }) {
         </div>
       )}
 
-      <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+      <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
         <button
           onClick={handleTest}
           disabled={testing}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-50 text-slate-600 hover:bg-slate-100 disabled:opacity-50 transition"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 transition"
         >
           {testing ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
           Test
@@ -106,7 +106,7 @@ function RouterCard({ router, isActive, onSelect, onEdit, onDelete, onTest }) {
             e.stopPropagation()
             onEdit(router)
           }}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-50 text-slate-600 hover:bg-blue-50 hover:text-blue-600 transition"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-950/50 hover:text-blue-600 dark:hover:text-blue-400 transition"
         >
           <Edit3 size={13} />
           Edit
@@ -116,7 +116,7 @@ function RouterCard({ router, isActive, onSelect, onEdit, onDelete, onTest }) {
             e.stopPropagation()
             onDelete(router)
           }}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-50 text-slate-600 hover:bg-rose-50 hover:text-rose-600 transition ml-auto"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-rose-50 dark:hover:bg-rose-950/50 hover:text-rose-600 dark:hover:text-rose-400 transition ml-auto"
         >
           <Trash2 size={13} />
         </button>
@@ -161,14 +161,14 @@ function RouterFormModal({ isOpen, onClose, onSubmit, initial, isEdit }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 z-10 animate-in">
+      <div className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 z-10 animate-in">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-bold text-slate-800">
+          <h2 className="text-lg font-bold text-slate-800 dark:text-white">
             {isEdit ? 'Edit Router' : 'Tambah Router Baru'}
           </h2>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 transition"
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
           >
             <X size={20} />
           </button>
@@ -176,7 +176,7 @@ function RouterFormModal({ isOpen, onClose, onSubmit, initial, isEdit }) {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
               Nama Router
             </label>
             <input
@@ -185,12 +185,12 @@ function RouterFormModal({ isOpen, onClose, onSubmit, initial, isEdit }) {
               onChange={handleChange}
               required
               placeholder="Contoh: Router Kantor Pusat"
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-purple/40"
+              className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-purple/40"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
               Host / IP Address
             </label>
             <input
@@ -199,13 +199,13 @@ function RouterFormModal({ isOpen, onClose, onSubmit, initial, isEdit }) {
               onChange={handleChange}
               required
               placeholder="192.168.88.1"
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-purple/40"
+              className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-purple/40"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                 Username
               </label>
               <input
@@ -214,11 +214,11 @@ function RouterFormModal({ isOpen, onClose, onSubmit, initial, isEdit }) {
                 onChange={handleChange}
                 required
                 placeholder="admin"
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-purple/40"
+                className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-purple/40"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                 Port API
               </label>
               <input
@@ -228,13 +228,13 @@ function RouterFormModal({ isOpen, onClose, onSubmit, initial, isEdit }) {
                 onChange={handleChange}
                 required
                 placeholder="8728"
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-purple/40"
+                className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-purple/40"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
               Password
             </label>
             <input
@@ -243,15 +243,15 @@ function RouterFormModal({ isOpen, onClose, onSubmit, initial, isEdit }) {
               value={form.password}
               onChange={handleChange}
               placeholder={isEdit ? 'Kosongkan jika tidak diubah' : 'Masukkan password'}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-purple/40"
+              className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-purple/40"
             />
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
               Port default: 8728 (API) atau 8729 (API-SSL)
             </p>
           </div>
 
           {error && (
-            <div className="bg-rose-50 text-rose-700 rounded-lg px-3 py-2 text-sm flex items-center gap-2">
+            <div className="bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/60 rounded-lg px-3 py-2 text-sm flex items-center gap-2">
               <XCircle size={16} />
               {error}
             </div>
@@ -269,7 +269,7 @@ function RouterFormModal({ isOpen, onClose, onSubmit, initial, isEdit }) {
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200 transition"
+              className="px-5 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition"
             >
               Batal
             </button>
@@ -295,10 +295,10 @@ function DeleteConfirmModal({ isOpen, onClose, onConfirm, router }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 z-10">
-        <h2 className="text-lg font-bold text-slate-800 mb-2">Hapus Router?</h2>
-        <p className="text-sm text-slate-500 mb-5">
-          Router <strong>{router.name}</strong> ({router.host}) akan dihapus permanen.
+      <div className="relative bg-white dark:bg-slate-900 border border-transparent dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-sm p-6 z-10">
+        <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-2">Hapus Router?</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">
+          Router <strong className="text-slate-800 dark:text-slate-200">{router.name}</strong> ({router.host}) akan dihapus permanen.
         </p>
         <div className="flex items-center gap-3">
           <button
@@ -311,7 +311,7 @@ function DeleteConfirmModal({ isOpen, onClose, onConfirm, router }) {
           </button>
           <button
             onClick={onClose}
-            className="flex-1 px-5 py-2.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200 transition"
+            className="flex-1 px-5 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition"
           >
             Batal
           </button>
@@ -368,8 +368,8 @@ export default function ConfigPage() {
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-800">Konfigurasi Router</h1>
-          <p className="text-slate-500 text-sm">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-white">Konfigurasi Router</h1>
+          <p className="text-slate-500 dark:text-slate-400 text-sm">
             Kelola daftar router Mikrotik yang ingin dipantau
           </p>
         </div>
@@ -383,19 +383,19 @@ export default function ConfigPage() {
       </div>
 
       {msg && (
-        <div className="mb-4 bg-emerald-50 text-emerald-700 rounded-lg px-4 py-3 text-sm flex items-center gap-2 animate-in">
+        <div className="mb-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 text-emerald-700 dark:text-emerald-300 rounded-lg px-4 py-3 text-sm flex items-center gap-2 animate-in">
           <CheckCircle size={18} />
           {msg}
         </div>
       )}
 
       {routers.length === 0 ? (
-        <div className="bg-white rounded-2xl shadow-card p-12 flex flex-col items-center justify-center text-center">
-          <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
-            <Router size={32} className="text-slate-300" />
+        <div className="bg-white dark:bg-slate-900 border border-transparent dark:border-slate-800 rounded-2xl shadow-card p-12 flex flex-col items-center justify-center text-center">
+          <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
+            <Router size={32} className="text-slate-300 dark:text-slate-600" />
           </div>
-          <h3 className="text-lg font-semibold text-slate-700 mb-2">Belum ada router</h3>
-          <p className="text-sm text-slate-400 mb-4 max-w-sm">
+          <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-200 mb-2">Belum ada router</h3>
+          <p className="text-sm text-slate-400 dark:text-slate-500 mb-4 max-w-sm">
             Tambahkan router Mikrotik untuk mulai monitoring. Kamu bisa menambahkan beberapa
             router dan memilih mana yang ingin dipantau.
           </p>

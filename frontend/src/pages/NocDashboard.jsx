@@ -395,23 +395,23 @@ export default function NocDashboard() {
       {/* ── Row 1: Hardware, Environment & System Capacity Telemetry ── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5">
         {/* CPU Load */}
-        <div className="bg-white rounded-2xl p-4 shadow-card border border-slate-100 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-card dark:shadow-none border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-400 dark:text-slate-500 mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider">CPU Load</span>
             <Cpu size={16} className="text-violet-500" />
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-slate-800">{res?.cpu_load ?? 0}%</span>
-            <span className="text-xs text-slate-400">Total</span>
+            <span className="text-2xl font-bold text-slate-800 dark:text-slate-100">{res?.cpu_load ?? 0}%</span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">Total</span>
           </div>
           {cpuCores.length > 1 ? (
             <div className="mt-2.5 space-y-1">
-              <div className="text-[10px] text-slate-400 font-medium">Per Core:</div>
+              <div className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">Per Core:</div>
               <div className="grid grid-cols-2 gap-1.5">
                 {cpuCores.slice(0, 8).map((c) => (
-                  <div key={c.core} className="flex items-center gap-1 text-[10px] text-slate-500">
-                    <span className="w-3 text-slate-400 font-mono">#{c.core}</span>
-                    <div className="flex-1 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                  <div key={c.core} className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400">
+                    <span className="w-3 text-slate-400 dark:text-slate-500 font-mono">#{c.core}</span>
+                    <div className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all ${
                           c.load > 80 ? 'bg-rose-500' : c.load > 50 ? 'bg-amber-500' : 'bg-emerald-500'
@@ -425,7 +425,7 @@ export default function NocDashboard() {
               </div>
             </div>
           ) : (
-            <div className="w-full bg-slate-100 rounded-full h-2 mt-3 overflow-hidden">
+            <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 mt-3 overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all ${
                   (res?.cpu_load ?? 0) > 80 ? 'bg-rose-500' : (res?.cpu_load ?? 0) > 50 ? 'bg-amber-500' : 'bg-violet-500'
@@ -437,18 +437,18 @@ export default function NocDashboard() {
         </div>
 
         {/* RAM Usage */}
-        <div className="bg-white rounded-2xl p-4 shadow-card border border-slate-100 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-card dark:shadow-none border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-400 dark:text-slate-500 mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider">RAM Memory</span>
             <Server size={16} className="text-emerald-500" />
           </div>
           <div>
-            <div className="text-2xl font-bold text-slate-800">{memPct}%</div>
-            <div className="text-xs text-slate-400 mt-0.5">
+            <div className="text-2xl font-bold text-slate-800 dark:text-slate-100">{memPct}%</div>
+            <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
               {formatBytes(memUsed)} / {formatBytes(memTotal)}
             </div>
           </div>
-          <div className="w-full bg-slate-100 rounded-full h-2 mt-3 overflow-hidden">
+          <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 mt-3 overflow-hidden">
             <div
               className={`h-full rounded-full transition-all ${
                 memPct > 85 ? 'bg-rose-500' : memPct > 65 ? 'bg-amber-500' : 'bg-emerald-500'
@@ -459,22 +459,22 @@ export default function NocDashboard() {
         </div>
 
         {/* Feature 3: Firewall Conntrack Table */}
-        <div className="bg-white rounded-2xl p-4 shadow-card border border-slate-100 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-card dark:shadow-none border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-400 dark:text-slate-500 mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider">Conntrack Table</span>
             <Network size={16} className="text-sky-500" />
           </div>
           <div>
-            <div className="text-2xl font-bold text-slate-800">
+            <div className="text-2xl font-bold text-slate-800 dark:text-slate-100">
               {dhcpConntrack?.conntrack_pct != null ? `${dhcpConntrack.conntrack_pct}%` : 'Normal'}
             </div>
-            <div className="text-xs text-slate-400 mt-0.5">
+            <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
               {dhcpConntrack?.conntrack_total != null
                 ? `${dhcpConntrack.conntrack_total.toLocaleString()} / ${dhcpConntrack.conntrack_max.toLocaleString()}`
                 : 'Firewall Tracking'}
             </div>
           </div>
-          <div className="w-full bg-slate-100 rounded-full h-2 mt-3 overflow-hidden">
+          <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 mt-3 overflow-hidden">
             <div
               className={`h-full rounded-full transition-all ${
                 (dhcpConntrack?.conntrack_pct || 0) > 85
@@ -489,44 +489,44 @@ export default function NocDashboard() {
         </div>
 
         {/* Feature 3: DHCP IP Pool Meter */}
-        <div className="bg-white rounded-2xl p-4 shadow-card border border-slate-100 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-card dark:shadow-none border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-400 dark:text-slate-500 mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider">DHCP Leases</span>
             <Database size={16} className="text-indigo-500" />
           </div>
           <div>
-            <div className="text-2xl font-bold text-slate-800">
+            <div className="text-2xl font-bold text-slate-800 dark:text-slate-100">
               {dhcpConntrack?.dhcp_bound_leases ?? 0}
             </div>
-            <div className="text-xs text-slate-400 mt-0.5">
+            <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
               Active bound ({dhcpConntrack?.dhcp_pool_count ?? 0} pools defined)
             </div>
           </div>
-          <div className="flex items-center gap-1.5 mt-3 text-xs text-slate-500">
+          <div className="flex items-center gap-1.5 mt-3 text-xs text-slate-500 dark:text-slate-400">
             <CheckCircle2 size={13} className="text-emerald-500" />
             <span>Pool Capacity Normal</span>
           </div>
         </div>
 
         {/* Temperature Sensors */}
-        <div className="bg-white rounded-2xl p-4 shadow-card border border-slate-100 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-card dark:shadow-none border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-400 dark:text-slate-500 mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider">Temperatur</span>
             <Thermometer size={16} className="text-amber-500" />
           </div>
           <div>
-            <div className="text-2xl font-bold text-slate-800">
+            <div className="text-2xl font-bold text-slate-800 dark:text-slate-100">
               {health?.cpu_temperature != null
                 ? `${health.cpu_temperature}°C`
                 : health?.temperature != null
                 ? `${health.temperature}°C`
                 : 'Normal'}
             </div>
-            <div className="text-xs text-slate-400 mt-0.5">
+            <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
               {health?.board_temperature != null ? `Board: ${health.board_temperature}°C` : 'Sensor Thermal'}
             </div>
           </div>
-          <div className="flex items-center gap-2 mt-3 text-xs text-slate-500">
+          <div className="flex items-center gap-2 mt-3 text-xs text-slate-500 dark:text-slate-400">
             <span
               className={`w-2 h-2 rounded-full ${
                 (health?.cpu_temperature || health?.temperature) > 70 ? 'bg-rose-500' : 'bg-emerald-500'
@@ -537,18 +537,18 @@ export default function NocDashboard() {
         </div>
 
         {/* Storage / HDD */}
-        <div className="bg-white rounded-2xl p-4 shadow-card border border-slate-100 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-card dark:shadow-none border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-400 dark:text-slate-500 mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider">Storage Disk</span>
             <HardDrive size={16} className="text-rose-500" />
           </div>
           <div>
-            <div className="text-2xl font-bold text-slate-800">{hddPct}%</div>
-            <div className="text-xs text-slate-400 mt-0.5">
+            <div className="text-2xl font-bold text-slate-800 dark:text-slate-100">{hddPct}%</div>
+            <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
               {formatBytes(hddUsed)} / {formatBytes(hddTotal)}
             </div>
           </div>
-          <div className="w-full bg-slate-100 rounded-full h-2 mt-3 overflow-hidden">
+          <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 mt-3 overflow-hidden">
             <div
               className={`h-full rounded-full transition-all ${
                 hddPct > 90 ? 'bg-rose-500' : 'bg-slate-400'
@@ -560,14 +560,14 @@ export default function NocDashboard() {
       </div>
 
       {/* ── Row 2: Physical Port Visualizer Panel ── */}
-      <div className="bg-white rounded-2xl p-5 shadow-card border border-slate-100">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-card dark:shadow-none border border-slate-100 dark:border-slate-800">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div>
-            <div className="text-sm font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+            <div className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
               <span>Port Matrix & Physical Link</span>
-              <span className="text-xs font-normal text-slate-400">({mergedPorts.length} interfaces detected)</span>
+              <span className="text-xs font-normal text-slate-400 dark:text-slate-500">({mergedPorts.length} interfaces detected)</span>
             </div>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               Panel visual status link port fisik, negosiasi speed, packet error, dan drops (klik port untuk inspeksi detail)
             </p>
           </div>
@@ -671,14 +671,14 @@ export default function NocDashboard() {
       {/* ── Row 3: Live Traffic Chart & Top 5 Domains ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Left (2 cols): Real-time Traffic Area Chart */}
-        <div className="lg:col-span-2 bg-white rounded-2xl p-5 shadow-card border border-slate-100 flex flex-col justify-between">
+        <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-card dark:shadow-none border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <div>
-              <div className="text-sm font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+              <div className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
                 <Activity size={16} className="text-violet-600" />
                 <span>Interface Throughput ({selectedIface || '-'})</span>
               </div>
-              <p className="text-xs text-slate-500">Live RX & TX bandwidth interface terpilih langsung dari RouterOS</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Live RX & TX bandwidth interface terpilih langsung dari RouterOS</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
@@ -688,7 +688,7 @@ export default function NocDashboard() {
                   setCapInput(wanCapacityMbps)
                   setShowCapModal(true)
                 }}
-                className="flex items-center gap-1.5 text-xs text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg px-2.5 py-1.5 transition"
+                className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 transition"
                 title="Atur Ambang Batas Kapasitas ISP"
               >
                 <Settings size={13} />
@@ -699,21 +699,21 @@ export default function NocDashboard() {
               <select
                 value={selectedIface}
                 onChange={(e) => setSelectedIface(e.target.value)}
-                className="bg-slate-50 hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-400 cursor-pointer max-w-[200px] truncate"
+                className="bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-400 cursor-pointer max-w-[200px] truncate"
               >
                 {mergedPorts.map((p) => (
-                  <option key={p.name} value={p.name}>
+                  <option key={p.name} value={p.name} className="dark:bg-slate-900 dark:text-slate-200">
                     {p.name} {p.running ? '● Up' : '○ Down'} {p.comment ? `— ${p.comment}` : ''}
                   </option>
                 ))}
               </select>
 
               <div className="flex items-center gap-3 text-xs font-semibold">
-                <span className="flex items-center gap-1.5 text-sky-600">
+                <span className="flex items-center gap-1.5 text-sky-600 dark:text-sky-400">
                   <span className="w-2.5 h-2.5 rounded-full bg-sky-500 shadow-[0_0_6px_rgba(14,165,233,0.6)] animate-pulse" />
                   RX {formatBps(ifaceTraffic.rx_bps)}
                 </span>
-                <span className="flex items-center gap-1.5 text-orange-600">
+                <span className="flex items-center gap-1.5 text-orange-600 dark:text-orange-400">
                   <span className="w-2.5 h-2.5 rounded-full bg-orange-500 shadow-[0_0_6px_rgba(249,115,22,0.6)] animate-pulse" />
                   TX {formatBps(ifaceTraffic.tx_bps)}
                 </span>
@@ -749,34 +749,34 @@ export default function NocDashboard() {
             </ResponsiveContainer>
           </div>
 
-          <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-            <span>Port: <strong className="text-slate-800">{selectedIface || '-'}</strong> ({currentIfaceObj?.running ? 'Running' : 'Down'})</span>
-            <span>Speed: <strong className="text-slate-700">{currentIfaceObj?.speed || '1 Gbps'}</strong></span>
-            <span>Total Akumulasi: <strong className="text-sky-600">↓ {formatBytes(currentIfaceObj?.rx_byte)}</strong> / <strong className="text-orange-600">↑ {formatBytes(currentIfaceObj?.tx_byte)}</strong></span>
+          <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+            <span>Port: <strong className="text-slate-800 dark:text-slate-200">{selectedIface || '-'}</strong> ({currentIfaceObj?.running ? 'Running' : 'Down'})</span>
+            <span>Speed: <strong className="text-slate-700 dark:text-slate-300">{currentIfaceObj?.speed || '1 Gbps'}</strong></span>
+            <span>Total Akumulasi: <strong className="text-sky-600 dark:text-sky-400">↓ {formatBytes(currentIfaceObj?.rx_byte)}</strong> / <strong className="text-orange-600 dark:text-orange-400">↑ {formatBytes(currentIfaceObj?.tx_byte)}</strong></span>
           </div>
         </div>
 
         {/* Right (1 col): Top 5 Visited Domains (DNS Cache) */}
-        <div className="bg-white rounded-2xl p-5 shadow-card border border-slate-100 flex flex-col justify-between">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-card dark:shadow-none border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-1">
-              <div className="text-sm font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
-                <Globe size={16} className="text-sky-600" />
+              <div className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
+                <Globe size={16} className="text-sky-600 dark:text-sky-400" />
                 <span>Top 5 Web / Domain</span>
               </div>
-              <span className="text-[10px] font-semibold bg-sky-50 text-sky-600 px-2 py-0.5 rounded-full border border-sky-200">
+              <span className="text-[10px] font-semibold bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-300 px-2 py-0.5 rounded-full border border-sky-200 dark:border-sky-800">
                 DNS Cache
               </span>
             </div>
-            <p className="text-xs text-slate-500 mb-4">Domain tujuan paling sering diakses oleh klien di jaringan</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Domain tujuan paling sering diakses oleh klien di jaringan</p>
 
             {topDomains.length > 0 ? (
               <div className="space-y-3.5">
                 {topDomains.map((item, idx) => (
                   <div key={item.domain} className="space-y-1">
                     <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2 font-medium text-slate-700">
-                        <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-600 font-bold flex items-center justify-center text-[10px]">
+                      <div className="flex items-center gap-2 font-medium text-slate-700 dark:text-slate-300">
+                        <span className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold flex items-center justify-center text-[10px]">
                           {idx + 1}
                         </span>
                         <span className="truncate max-w-[170px]" title={item.domain}>
@@ -784,11 +784,11 @@ export default function NocDashboard() {
                         </span>
                       </div>
                       <div className="text-right">
-                        <span className="font-semibold text-slate-800">{item.hits}</span>
-                        <span className="text-[10px] text-slate-400 ml-1">({item.percentage}%)</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">{item.hits}</span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-1">({item.percentage}%)</span>
                       </div>
                     </div>
-                    <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                    <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
                       <div
                         className="h-full bg-gradient-to-r from-sky-500 to-indigo-500 rounded-full"
                         style={{ width: `${Math.min(100, Math.max(5, item.percentage))}%` }}
@@ -798,15 +798,15 @@ export default function NocDashboard() {
                 ))}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center h-48 text-slate-400 text-xs">
-                <Globe size={32} className="mb-2 text-slate-300" />
+              <div className="flex flex-col items-center justify-center h-48 text-slate-400 dark:text-slate-500 text-xs">
+                <Globe size={32} className="mb-2 text-slate-300 dark:text-slate-600" />
                 <span>Belum ada query DNS tercatat</span>
-                <span className="text-[10px] text-slate-400 mt-0.5">Pastikan klien menggunakan DNS RouterOS</span>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Pastikan klien menggunakan DNS RouterOS</span>
               </div>
             )}
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-400 flex items-center justify-between">
+          <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-400 dark:text-slate-500 flex items-center justify-between">
             <span>Metode: /ip dns cache</span>
             <span>Update setiap 5 dtk</span>
           </div>
@@ -816,38 +816,38 @@ export default function NocDashboard() {
       {/* ── Row 4: Top Bandwidth Consumers & Anomaly List ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Top Talkers */}
-        <div className="bg-white rounded-2xl p-5 shadow-card border border-slate-100">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-card dark:shadow-none border border-slate-100 dark:border-slate-800">
           <div className="flex items-center justify-between mb-3">
-            <div className="text-sm font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
-              <Users size={16} className="text-emerald-600" />
+            <div className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
+              <Users size={16} className="text-emerald-600 dark:text-emerald-400" />
               <span>Top Bandwidth Consumers</span>
             </div>
-            <span className="text-xs text-slate-400">Hotspot & PPPoE</span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">Hotspot & PPPoE</span>
           </div>
 
           {topTalkers.length > 0 ? (
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {topTalkers.map((t, idx) => (
                 <div key={`${t.name}-${idx}`} className="py-2.5 flex items-center justify-between text-xs">
                   <div className="flex items-center gap-3">
-                    <span className="w-5 h-5 rounded-full bg-emerald-50 text-emerald-700 font-bold flex items-center justify-center text-[10px] border border-emerald-200">
+                    <span className="w-5 h-5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-bold flex items-center justify-center text-[10px] border border-emerald-200 dark:border-emerald-800">
                       {idx + 1}
                     </span>
                     <div>
-                      <div className="font-semibold text-slate-800">{t.name}</div>
-                      <div className="text-[10px] text-slate-400">
-                        {t.ip || '-'} · <span className="font-medium text-slate-500">{t.service}</span>
+                      <div className="font-semibold text-slate-800 dark:text-slate-100">{t.name}</div>
+                      <div className="text-[10px] text-slate-400 dark:text-slate-500">
+                        {t.ip || '-'} · <span className="font-medium text-slate-500 dark:text-slate-400">{t.service}</span>
                       </div>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-bold text-slate-800">
+                    <div className="font-bold text-slate-800 dark:text-slate-100">
                       {t.total_bytes ? formatBytes(t.total_bytes) : 'Active Session'}
                     </div>
                     {t.bytes_in != null && t.bytes_out != null && (
-                      <div className="text-[10px] text-slate-400 flex items-center gap-1 justify-end">
-                        <span className="text-sky-500">↓ {formatBytes(t.bytes_in)}</span>
-                        <span className="text-orange-500">↑ {formatBytes(t.bytes_out)}</span>
+                      <div className="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-1 justify-end">
+                        <span className="text-sky-500 dark:text-sky-400">↓ {formatBytes(t.bytes_in)}</span>
+                        <span className="text-orange-500 dark:text-orange-400">↑ {formatBytes(t.bytes_out)}</span>
                       </div>
                     )}
                   </div>
@@ -855,41 +855,41 @@ export default function NocDashboard() {
               ))}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center h-32 text-slate-400 text-xs">
-              <Users size={28} className="mb-1 text-slate-300" />
+            <div className="flex flex-col items-center justify-center h-32 text-slate-400 dark:text-slate-500 text-xs">
+              <Users size={28} className="mb-1 text-slate-300 dark:text-slate-600" />
               <span>Belum ada klien aktif terdeteksi</span>
             </div>
           )}
         </div>
 
         {/* Link Error & Packet Drop Watchlist */}
-        <div className="bg-white rounded-2xl p-5 shadow-card border border-slate-100">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-card dark:shadow-none border border-slate-100 dark:border-slate-800">
           <div className="flex items-center justify-between mb-3">
-            <div className="text-sm font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+            <div className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
               <AlertTriangle size={16} className="text-amber-500" />
               <span>Link Error & Packet Drop Watchlist</span>
             </div>
-            <span className="text-xs text-slate-400">Kualitas Fisik Kabel / SFP</span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">Kualitas Fisik Kabel / SFP</span>
           </div>
 
           {mergedPorts.filter((p) => p.rx_drop > 0 || p.tx_drop > 0 || p.rx_error > 0 || p.tx_error > 0).length > 0 ? (
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {mergedPorts
                 .filter((p) => p.rx_drop > 0 || p.tx_drop > 0 || p.rx_error > 0 || p.tx_error > 0)
                 .map((p) => (
                   <div key={p.name} className="py-2.5 flex items-center justify-between text-xs">
                     <div>
-                      <span className="font-bold text-slate-800">{p.name}</span>
-                      <span className="text-[10px] text-slate-400 ml-2">({p.speed || '1G'})</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-100">{p.name}</span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-2">({p.speed || '1G'})</span>
                     </div>
                     <div className="flex items-center gap-3">
                       {(p.rx_drop > 0 || p.tx_drop > 0) && (
-                        <span className="text-amber-600 font-medium">
+                        <span className="text-amber-600 dark:text-amber-400 font-medium">
                           Drops: {p.rx_drop + p.tx_drop}
                         </span>
                       )}
                       {(p.rx_error > 0 || p.tx_error > 0) && (
-                        <span className="text-rose-600 font-medium">
+                        <span className="text-rose-600 dark:text-rose-400 font-medium">
                           Errors: {p.rx_error + p.tx_error}
                         </span>
                       )}
@@ -898,31 +898,31 @@ export default function NocDashboard() {
                 ))}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center h-32 text-emerald-600 text-xs">
+            <div className="flex flex-col items-center justify-center h-32 text-emerald-600 dark:text-emerald-400 text-xs">
               <CheckCircle2 size={32} className="mb-2 text-emerald-500" />
-              <span className="font-semibold text-slate-700">Semua Link Interface Bersih</span>
-              <span className="text-[11px] text-slate-400 mt-0.5">0 packet drop & 0 CRC error pada semua port</span>
+              <span className="font-semibold text-slate-700 dark:text-slate-300">Semua Link Interface Bersih</span>
+              <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">0 packet drop & 0 CRC error pada semua port</span>
             </div>
           )}
         </div>
       </div>
 
       {/* ── Feature 1: Row 5: Real-Time Incident & System Log Stream ── */}
-      <div className="bg-white rounded-2xl p-5 shadow-card border border-slate-100">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-card dark:shadow-none border border-slate-100 dark:border-slate-800">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div>
-            <div className="text-sm font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
-              <ScrollText size={16} className="text-rose-600" />
+            <div className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
+              <ScrollText size={16} className="text-rose-600 dark:text-rose-400" />
               <span>Live Incident & System Log Stream</span>
-              <span className="text-xs font-normal text-slate-400">({filteredLogs.length} events)</span>
+              <span className="text-xs font-normal text-slate-400 dark:text-slate-500">({filteredLogs.length} events)</span>
             </div>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               Umpan log RouterOS real-time khusus insiden kritis, error, dan peringatan sistem
             </p>
           </div>
 
           {/* Filter Pills */}
-          <div className="flex items-center gap-1.5 text-xs bg-slate-100 p-1 rounded-xl">
+          <div className="flex items-center gap-1.5 text-xs bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
             {['all', 'critical', 'error', 'warning'].map((f) => (
               <button
                 key={f}
@@ -935,8 +935,8 @@ export default function NocDashboard() {
                       ? 'bg-red-500 text-white shadow-sm'
                       : f === 'warning'
                       ? 'bg-amber-500 text-white shadow-sm'
-                      : 'bg-white text-slate-800 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-800'
+                      : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
               >
                 {f}
@@ -995,14 +995,14 @@ export default function NocDashboard() {
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in">
           <form
             onSubmit={handleSaveCapacity}
-            className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-5 border border-slate-200"
+            className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-sm w-full p-5 border border-slate-200 dark:border-slate-800"
           >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-base text-slate-800">Atur Kapasitas Bandwidth ISP</h3>
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="font-bold text-base text-slate-800 dark:text-white">Atur Kapasitas Bandwidth ISP</h3>
               <button
                 type="button"
                 onClick={() => setShowCapModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-semibold"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-sm font-semibold"
               >
                 ✕
               </button>
@@ -1010,7 +1010,7 @@ export default function NocDashboard() {
 
             <div className="mt-4 space-y-3">
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">
+                <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1 block">
                   Kapasitas Langganan (Mbps)
                 </label>
                 <input
@@ -1019,21 +1019,21 @@ export default function NocDashboard() {
                   max="100000"
                   value={capInput}
                   onChange={(e) => setCapInput(e.target.value)}
-                  className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  className="w-full border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl px-3 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
                   placeholder="Contoh: 500"
                   required
                 />
               </div>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
                 Dashboard akan memicu alarm dan banner saturasi jika throughput interface melebihi 85% dari batas ini.
               </p>
             </div>
 
-            <div className="mt-5 pt-3 border-t border-slate-100 flex justify-end gap-2">
+            <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setShowCapModal(false)}
-                className="px-3.5 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                className="px-3.5 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
               >
                 Batal
               </button>
@@ -1066,45 +1066,45 @@ function PortDetailModal({ port, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-5 border border-slate-200">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full p-5 border border-slate-200 dark:border-slate-800">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-2">
             <span
               className={`w-3 h-3 rounded-full ${
                 port.running ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse' : 'bg-rose-500'
               }`}
             />
-            <h3 className="font-bold text-base text-slate-800">{port.name}</h3>
-            <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-mono">
+            <h3 className="font-bold text-base text-slate-800 dark:text-white">{port.name}</h3>
+            <span className="text-xs px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono">
               {port.type}
             </span>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 text-sm font-semibold p-1"
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-sm font-semibold p-1"
           >
             ✕
           </button>
         </div>
 
         <div className="mt-4 space-y-2.5 text-xs">
-          <div className="flex justify-between py-1 border-b border-slate-50">
-            <span className="text-slate-400">Link Status</span>
-            <span className={`font-semibold ${port.running ? 'text-emerald-600' : 'text-rose-600'}`}>
+          <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800">
+            <span className="text-slate-400 dark:text-slate-500">Link Status</span>
+            <span className={`font-semibold ${port.running ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
               {port.running ? 'LINK UP (Running)' : 'LINK DOWN'}
             </span>
           </div>
-          <div className="flex justify-between py-1 border-b border-slate-50">
-            <span className="text-slate-400">Negotiated Speed</span>
-            <span className="font-semibold text-slate-700">{port.speed || '1 Gbps (Full Duplex)'}</span>
+          <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800">
+            <span className="text-slate-400 dark:text-slate-500">Negotiated Speed</span>
+            <span className="font-semibold text-slate-700 dark:text-slate-200">{port.speed || '1 Gbps (Full Duplex)'}</span>
           </div>
-          <div className="flex justify-between py-1 border-b border-slate-50">
-            <span className="text-slate-400">MAC Address</span>
-            <span className="font-mono text-slate-700">{port.mac_address || '-'}</span>
+          <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800">
+            <span className="text-slate-400 dark:text-slate-500">MAC Address</span>
+            <span className="font-mono text-slate-700 dark:text-slate-200">{port.mac_address || '-'}</span>
           </div>
-          <div className="flex justify-between py-1 border-b border-slate-50 items-center">
-            <span className="text-slate-400">Current Live Traffic</span>
-            <div className="flex items-center gap-3 font-semibold text-slate-700">
+          <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800 items-center">
+            <span className="text-slate-400 dark:text-slate-500">Current Live Traffic</span>
+            <div className="flex items-center gap-3 font-semibold text-slate-700 dark:text-slate-200">
               <span className="text-sky-600 flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-sky-500 animate-ping" />
                 ↓ {formatBps(rx)}
@@ -1115,30 +1115,30 @@ function PortDetailModal({ port, onClose }) {
               </span>
             </div>
           </div>
-          <div className="flex justify-between py-1 border-b border-slate-50">
-            <span className="text-slate-400">Total Cumulative RX/TX</span>
-            <span className="text-slate-700 font-medium">
+          <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800">
+            <span className="text-slate-400 dark:text-slate-500">Total Cumulative RX/TX</span>
+            <span className="text-slate-700 dark:text-slate-200 font-medium">
               ↓ {formatBytes(port.rx_byte)} / ↑ {formatBytes(port.tx_byte)}
             </span>
           </div>
-          <div className="flex justify-between py-1 border-b border-slate-50">
-            <span className="text-slate-400">Packet Drops</span>
-            <span className={`font-semibold ${port.rx_drop > 0 || port.tx_drop > 0 ? 'text-amber-600' : 'text-slate-700'}`}>
+          <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800">
+            <span className="text-slate-400 dark:text-slate-500">Packet Drops</span>
+            <span className={`font-semibold ${port.rx_drop > 0 || port.tx_drop > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-700 dark:text-slate-200'}`}>
               RX: {port.rx_drop} · TX: {port.tx_drop}
             </span>
           </div>
-          <div className="flex justify-between py-1 border-b border-slate-50">
-            <span className="text-slate-400">Packet Errors</span>
-            <span className={`font-semibold ${port.rx_error > 0 || port.tx_error > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
+          <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800">
+            <span className="text-slate-400 dark:text-slate-500">Packet Errors</span>
+            <span className={`font-semibold ${port.rx_error > 0 || port.tx_error > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-slate-200'}`}>
               RX: {port.rx_error} · TX: {port.tx_error}
             </span>
           </div>
         </div>
 
-        <div className="mt-5 pt-3 border-t border-slate-100 flex justify-end">
+        <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition"
+            className="px-4 py-1.5 bg-slate-900 dark:bg-slate-700 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 dark:hover:bg-slate-600 transition"
           >
             Tutup
           </button>

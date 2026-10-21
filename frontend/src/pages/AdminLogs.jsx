@@ -45,76 +45,76 @@ export default function AdminLogs() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-brand-purple/10 flex items-center justify-center">
+        <div className="w-10 h-10 rounded-full bg-brand-purple/10 dark:bg-brand-purple/20 flex items-center justify-center">
           <ScrollText size={20} className="text-brand-purple" />
         </div>
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Audit Logs</h1>
-          <p className="text-xs text-slate-400">{logs.length} total entries</p>
+          <h1 className="text-xl font-bold text-slate-800 dark:text-white">Audit Logs</h1>
+          <p className="text-xs text-slate-400 dark:text-slate-500">{logs.length} total entries</p>
         </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
           <input
             type="text"
             placeholder="Cari username, target, endpoint, IP..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-purple/30"
+            className="w-full pl-9 pr-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-brand-purple/30"
           />
         </div>
         <div className="relative">
-          <Filter size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Filter size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
           <select
             value={actionFilter}
             onChange={e => setActionFilter(e.target.value)}
-            className="pl-9 pr-8 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-purple/30 appearance-none bg-white"
+            className="pl-9 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-brand-purple/30 appearance-none bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
           >
-            <option value="">Semua Action</option>
+            <option value="" className="dark:bg-slate-900">Semua Action</option>
             {actions.map(a => (
-              <option key={a} value={a}>{a}</option>
+              <option key={a} value={a} className="dark:bg-slate-900">{a}</option>
             ))}
           </select>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-card overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-card dark:shadow-none overflow-hidden">
         {loading ? (
-          <div className="p-8 text-center text-slate-400">Memuat data...</div>
+          <div className="p-8 text-center text-slate-400 dark:text-slate-500">Memuat data...</div>
         ) : filtered.length === 0 ? (
-          <div className="p-8 text-center text-slate-400">Tidak ada log ditemukan</div>
+          <div className="p-8 text-center text-slate-400 dark:text-slate-500">Tidak ada log ditemukan</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-100">
-                  <th className="text-left px-4 py-3 text-xs uppercase tracking-wider text-slate-400 font-medium">User</th>
-                  <th className="text-left px-4 py-3 text-xs uppercase tracking-wider text-slate-400 font-medium">Action</th>
-                  <th className="text-left px-4 py-3 text-xs uppercase tracking-wider text-slate-400 font-medium">Target</th>
-                  <th className="text-left px-4 py-3 text-xs uppercase tracking-wider text-slate-400 font-medium">Endpoint</th>
-                  <th className="text-left px-4 py-3 text-xs uppercase tracking-wider text-slate-400 font-medium">IP</th>
-                  <th className="text-left px-4 py-3 text-xs uppercase tracking-wider text-slate-400 font-medium">Waktu</th>
+                <tr className="border-b border-slate-100 dark:border-slate-800">
+                  <th className="text-left px-4 py-3 text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 font-medium">User</th>
+                  <th className="text-left px-4 py-3 text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 font-medium">Action</th>
+                  <th className="text-left px-4 py-3 text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 font-medium">Target</th>
+                  <th className="text-left px-4 py-3 text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 font-medium">Endpoint</th>
+                  <th className="text-left px-4 py-3 text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 font-medium">IP</th>
+                  <th className="text-left px-4 py-3 text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500 font-medium">Waktu</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map(log => (
-                  <tr key={log.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition">
-                    <td className="px-4 py-3 font-medium text-slate-700">{log.username}</td>
+                  <tr key={log.id} className="border-b border-slate-50 dark:border-slate-800/60 hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition">
+                    <td className="px-4 py-3 font-medium text-slate-700 dark:text-slate-200">{log.username}</td>
                     <td className="px-4 py-3">
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${ACTION_COLORS[log.action] || 'bg-slate-100 text-slate-600'}`}>
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${ACTION_COLORS[log.action] || 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}>
                         {log.action}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{log.target || '-'}</td>
-                    <td className="px-4 py-3 text-slate-500 font-mono text-xs">{log.endpoint}</td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{log.target || '-'}</td>
+                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400 font-mono text-xs">{log.endpoint}</td>
                     <td className="px-4 py-3">
                       {log.ip_address ? (
-                        <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs font-mono">{log.ip_address}</span>
+                        <span className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded text-xs font-mono">{log.ip_address}</span>
                       ) : '-'}
                     </td>
-                    <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">
+                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">
                       {new Date(log.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
                       {' '}
                       {new Date(log.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}

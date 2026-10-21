@@ -8,8 +8,8 @@ import { formatBps, formatBytes, formatUptime } from '../utils/format'
 function InfoCell({ label, value, valueClass = '' }) {
   return (
     <div className="px-5 py-3">
-      <div className="text-[11px] uppercase tracking-wider text-slate-400">{label}</div>
-      <div className={`mt-1 font-semibold text-slate-800 ${valueClass}`}>{value ?? '-'}</div>
+      <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">{label}</div>
+      <div className={`mt-1 font-semibold text-slate-800 dark:text-slate-100 ${valueClass}`}>{value ?? '-'}</div>
     </div>
   )
 }
@@ -85,11 +85,11 @@ export default function DeviceMonitor() {
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-800">Device Monitor</h1>
-          <p className="text-slate-500 text-sm">Realtime · CPU · RAM · Disk · Traffic</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-white">Device Monitor</h1>
+          <p className="text-slate-500 dark:text-slate-400 text-sm">Realtime · CPU · RAM · Disk · Traffic</p>
         </div>
         <select
-          className="border border-slate-200 rounded-md px-3 py-1.5 text-sm bg-white w-full sm:w-auto"
+          className="border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 w-full sm:w-auto focus:outline-none focus:ring-2 focus:ring-brand-purple/40"
           value={iface}
           onChange={(e) => setIface(e.target.value)}
         >
@@ -100,7 +100,7 @@ export default function DeviceMonitor() {
       </div>
 
       {/* Header info */}
-      <div className="bg-white rounded-2xl shadow-card mb-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 divide-x divide-slate-100">
+      <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-card dark:shadow-none mb-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 divide-x divide-slate-100 dark:divide-slate-800">
         <InfoCell label="Device" value={res?.identity || res?.board_name} />
         <InfoCell label="Board" value={res?.board_name} />
         <InfoCell label="IP" value={res?.host} />
@@ -116,38 +116,38 @@ export default function DeviceMonitor() {
 
       {/* Gauges */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <div className="bg-white rounded-2xl shadow-card p-5">
-          <div className="text-sm font-medium text-slate-500 mb-3">CPU LOAD</div>
+        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-card dark:shadow-none p-5">
+          <div className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-3">CPU LOAD</div>
           <Gauge value={res?.cpu_load ?? 0} color="#f59e0b" label={res?.board_name} />
         </div>
-        <div className="bg-white rounded-2xl shadow-card p-5">
-          <div className="text-sm font-medium text-slate-500 mb-3">RAM USAGE</div>
+        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-card dark:shadow-none p-5">
+          <div className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-3">RAM USAGE</div>
           <Gauge
             value={memPct}
             color="#10b981"
             label={memTotal ? `${formatBytes(memUsed)} / ${formatBytes(memTotal)}` : '-'}
           />
         </div>
-        <div className="bg-white rounded-2xl shadow-card p-5">
-          <div className="text-sm font-medium text-slate-500 mb-3">DISK USAGE</div>
+        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-card dark:shadow-none p-5">
+          <div className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-3">DISK USAGE</div>
           <Gauge
             value={hddPct}
             color="#f97316"
             label={hddTotal ? `${formatBytes(hddUsed)} / ${formatBytes(hddTotal)}` : '-'}
           />
         </div>
-        <div className="bg-white rounded-2xl shadow-card p-5">
-          <div className="text-sm font-medium text-slate-500 mb-3">TOTAL TRAFFIC</div>
+        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-card dark:shadow-none p-5">
+          <div className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-3">TOTAL TRAFFIC</div>
           <div className="space-y-3">
             <div>
               <div className="text-xs text-sky-500 font-semibold">↓ RX DOWNLOAD</div>
-              <div className="text-2xl font-bold text-sky-600">{formatBps(last.rx_bps)}</div>
+              <div className="text-2xl font-bold text-sky-600 dark:text-sky-400">{formatBps(last.rx_bps)}</div>
             </div>
             <div>
               <div className="text-xs text-orange-500 font-semibold">↑ TX UPLOAD</div>
-              <div className="text-2xl font-bold text-orange-600">{formatBps(last.tx_bps)}</div>
+              <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">{formatBps(last.tx_bps)}</div>
             </div>
-            <div className="text-[11px] text-slate-400">on {iface || '-'}</div>
+            <div className="text-[11px] text-slate-400 dark:text-slate-500">on {iface || '-'}</div>
           </div>
         </div>
       </div>

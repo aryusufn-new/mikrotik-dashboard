@@ -16,9 +16,9 @@ import {
 
 function StatCard({ title, value, color, Icon }) {
   return (
-    <div className="bg-white rounded-2xl shadow-card p-5 flex items-center justify-between">
+    <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-card dark:shadow-none p-5 flex items-center justify-between">
       <div>
-        <div className="text-slate-500 text-sm">{title}</div>
+        <div className="text-slate-500 dark:text-slate-400 text-sm">{title}</div>
         <div className="text-3xl font-semibold mt-2" style={{ color }}>{value ?? '-'}</div>
       </div>
       <div className="w-12 h-12 rounded-full flex items-center justify-center text-white" style={{ background: color }}>
@@ -37,10 +37,10 @@ function UserTrafficModal({ username, historyData, currentTraffic, onClose }) {
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       
       {/* Modal Content */}
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 z-10 animate-in">
+      <div className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl p-6 z-10 animate-in">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
               <Activity className="text-brand-purple" size={20} />
               Traffic Real-Time: {username}
             </h2>
@@ -220,8 +220,8 @@ export default function PppoeMonitor() {
   return (
     <div>
       <div className="mb-4">
-        <h1 className="text-xl sm:text-2xl font-bold text-slate-800">PPPoE Monitor</h1>
-        <p className="text-slate-500 text-sm">Status user PPPoE: online & offline</p>
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-white">PPPoE Monitor</h1>
+        <p className="text-slate-500 dark:text-slate-400 text-sm">Status user PPPoE: online & offline</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4">
@@ -230,23 +230,23 @@ export default function PppoeMonitor() {
         <StatCard title="Offline" value={stats?.offline} color="#ef4444" Icon={WifiOff} />
       </div>
 
-      <div className="bg-white rounded-2xl shadow-card p-4 sm:p-5">
+      <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-card dark:shadow-none p-4 sm:p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-          <div className="text-sm font-semibold text-slate-700">PPPoE Users</div>
+          <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">PPPoE Users</div>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Cari user / profile / comment…"
-              className="border border-slate-200 rounded-md px-3 py-1.5 text-sm w-full sm:w-64"
+              className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-lg px-3 py-1.5 text-sm w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-brand-purple/40"
             />
-            <div className="flex rounded-md border border-slate-200 overflow-hidden text-sm">
+            <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden text-sm">
               {['all', 'online', 'offline'].map((f) => (
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
-                  className={`flex-1 sm:flex-none px-3 py-1.5 capitalize ${filter === f ? 'bg-brand-purple text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                  className={`flex-1 sm:flex-none px-3 py-1.5 capitalize ${filter === f ? 'bg-brand-purple text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/60'}`}
                 >{f}</button>
               ))}
             </div>
@@ -256,7 +256,7 @@ export default function PppoeMonitor() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-slate-500 text-xs uppercase border-b border-slate-100">
+              <tr className="text-slate-500 dark:text-slate-400 text-xs uppercase border-b border-slate-100 dark:border-slate-800">
                 <th className="text-left py-2 px-2">User</th>
                 <th className="text-left py-2 px-2">Profile</th>
                 <th className="text-left py-2 px-2">Status</th>
@@ -274,9 +274,9 @@ export default function PppoeMonitor() {
                 const liveTraffic = trafficMap[s.name]
                 
                 return (
-                  <tr key={s.name} className="border-b border-slate-50 hover:bg-slate-50 transition">
-                    <td className="py-2 px-2 font-medium text-slate-800">{s.name}</td>
-                    <td className="py-2 px-2 text-slate-500">{s.profile || '-'}</td>
+                  <tr key={s.name} className="border-b border-slate-50 dark:border-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
+                    <td className="py-2 px-2 font-medium text-slate-800 dark:text-slate-100">{s.name}</td>
+                    <td className="py-2 px-2 text-slate-500 dark:text-slate-400">{s.profile || '-'}</td>
                     <td className="py-2 px-2">
                       {s.disabled ? (
                         <span className="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-500">disabled</span>

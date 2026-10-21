@@ -1,5 +1,6 @@
 import React from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { ThemeProvider } from './context/ThemeContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { RouterProvider } from './context/RouterContext'
 import AppLayout from './layouts/AppLayout'
@@ -36,8 +37,9 @@ function GuestOnly({ children }) {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <RouterProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <RouterProvider>
           <Routes>
             <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
             <Route path="/register" element={<GuestOnly><RegisterPage /></GuestOnly>} />
@@ -56,6 +58,7 @@ export default function App() {
           </Routes>
         </RouterProvider>
       </AuthProvider>
-    </BrowserRouter>
+    </ThemeProvider>
+  </BrowserRouter>
   )
 }

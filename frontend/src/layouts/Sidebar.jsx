@@ -57,7 +57,7 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
 
   return (
     <aside
-      className={`shrink-0 bg-white border-r border-slate-200 h-screen sticky top-0 flex flex-col transition-all duration-300 ease-in-out select-none ${
+      className={`shrink-0 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 h-screen sticky top-0 flex flex-col transition-all duration-300 ease-in-out select-none ${
         isCollapsed ? 'w-16 p-2' : 'w-60 p-4'
       }`}
     >
@@ -74,7 +74,7 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
             </button>
             <button
               onClick={onToggleCollapse}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-brand-purple hover:bg-slate-100 transition hidden lg:flex"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-brand-purple hover:bg-slate-100 dark:hover:bg-slate-800 transition hidden lg:flex"
               title="Buka Sidebar (Perluas)"
             >
               <PanelLeftOpen size={17} />
@@ -83,14 +83,14 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
         ) : (
           <>
             <div className="overflow-hidden">
-              <div className="text-xl font-bold tracking-tight text-slate-800 whitespace-nowrap">
+              <div className="text-xl font-bold tracking-tight text-slate-800 dark:text-white whitespace-nowrap">
                 MIMO<span className="text-brand-purple">.SA</span>
               </div>
-              <div className="text-[11px] text-slate-400 whitespace-nowrap">Monitoring MikroTik System</div>
+              <div className="text-[11px] text-slate-400 dark:text-slate-500 whitespace-nowrap">Monitoring MikroTik System</div>
             </div>
             <button
               onClick={onToggleCollapse}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition hidden lg:flex"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition hidden lg:flex"
               title="Tutup / Perkecil Sidebar"
             >
               <PanelLeftClose size={18} />
@@ -106,7 +106,7 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
             <div className="flex justify-center">
               <button
                 onClick={handleCycleRouter}
-                className="w-10 h-10 rounded-xl bg-gradient-to-r from-brand-purple/10 to-indigo-50 border border-brand-purple/20 flex items-center justify-center text-brand-purple hover:bg-brand-purple/20 transition relative group"
+                className="w-10 h-10 rounded-xl bg-gradient-to-r from-brand-purple/10 to-indigo-50 dark:from-brand-purple/20 dark:to-indigo-950/40 border border-brand-purple/20 dark:border-brand-purple/30 flex items-center justify-center text-brand-purple hover:bg-brand-purple/20 transition relative group"
                 title={`Router Aktif: ${activeRouter?.name || 'Router'} (${activeRouter?.host || ''})${
                   routers.length > 1 ? ' - Klik untuk ganti' : ''
                 }`}
@@ -118,24 +118,24 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
                   </span>
                 )}
                 {/* Floating tooltip */}
-                <div className="absolute left-full ml-2 px-2.5 py-1 bg-slate-800 text-white text-[11px] rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-lg">
+                <div className="absolute left-full ml-2 px-2.5 py-1 bg-slate-800 dark:bg-slate-700 text-white text-[11px] rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-lg">
                   {activeRouter?.name || 'Router'} ({activeRouter?.host})
                 </div>
               </button>
             </div>
           ) : (
             <div className="px-1">
-              <div className="text-[11px] uppercase tracking-wider text-slate-400 px-1 mb-1.5 font-semibold">
+              <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1 mb-1.5 font-semibold">
                 Router Aktif
               </div>
               <div className="relative">
                 <select
                   value={activeRouterId || ''}
                   onChange={(e) => setActiveRouterId(Number(e.target.value))}
-                  className="w-full appearance-none bg-gradient-to-r from-brand-purple/5 to-indigo-50 border border-brand-purple/20 rounded-xl px-3 py-2 pr-8 text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-purple/40 cursor-pointer transition hover:border-brand-purple/40"
+                  className="w-full appearance-none bg-gradient-to-r from-brand-purple/5 to-indigo-50 dark:from-slate-800 dark:to-slate-800/80 border border-brand-purple/20 dark:border-slate-700 rounded-xl px-3 py-2 pr-8 text-sm font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-purple/40 cursor-pointer transition hover:border-brand-purple/40"
                 >
                   {routers.map((r) => (
-                    <option key={r.id} value={r.id}>
+                    <option key={r.id} value={r.id} className="dark:bg-slate-900 dark:text-slate-200">
                       {r.name}
                     </option>
                   ))}
@@ -147,8 +147,8 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
               </div>
               {activeRouter && (
                 <div className="flex items-center gap-1.5 mt-1.5 px-1">
-                  <Router size={12} className="text-slate-400" />
-                  <span className="text-[11px] text-slate-400 truncate">
+                  <Router size={12} className="text-slate-400 dark:text-slate-500" />
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
                     {activeRouter.host}:{activeRouter.port}
                   </span>
                 </div>
@@ -176,11 +176,11 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
 
       {/* ── Section: Monitoring ── */}
       {!isCollapsed ? (
-        <div className="text-[11px] uppercase tracking-wider text-slate-400 px-2 mb-2 font-semibold">
+        <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 px-2 mb-2 font-semibold">
           Monitoring
         </div>
       ) : (
-        <div className="my-2 border-t border-slate-100 mx-2" />
+        <div className="my-2 border-t border-slate-100 dark:border-slate-800 mx-2" />
       )}
 
       <nav className="space-y-1">
@@ -195,21 +195,21 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
                 ? [
                     'flex items-center justify-center w-10 h-10 mx-auto rounded-xl transition relative group',
                     isActive
-                      ? 'bg-brand-purple/15 text-brand-purple font-semibold shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100',
+                      ? 'bg-brand-purple/15 dark:bg-brand-purple/25 text-brand-purple font-semibold shadow-xs'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/70',
                   ].join(' ')
                 : [
                     'flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition',
                     isActive
-                      ? 'bg-brand-purple/10 text-brand-purple font-semibold shadow-xs'
-                      : 'text-slate-600 hover:bg-slate-100',
+                      ? 'bg-brand-purple/10 dark:bg-brand-purple/20 text-brand-purple font-semibold shadow-xs'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/70 hover:text-slate-800 dark:hover:text-white',
                   ].join(' ')
             }
           >
             <Icon size={isCollapsed ? 19 : 18} className="shrink-0" />
             {!isCollapsed && <span className="truncate">{label}</span>}
             {isCollapsed && (
-              <div className="absolute left-full ml-2 px-2.5 py-1 bg-slate-800 text-white text-xs font-medium rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-lg">
+              <div className="absolute left-full ml-2 px-2.5 py-1 bg-slate-800 dark:bg-slate-700 text-white text-xs font-medium rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-lg">
                 {label}
               </div>
             )}
@@ -219,11 +219,11 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
 
       {/* ── Section: Settings ── */}
       {!isCollapsed ? (
-        <div className="text-[11px] uppercase tracking-wider text-slate-400 px-2 mt-5 mb-2 font-semibold">
+        <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 px-2 mt-5 mb-2 font-semibold">
           Settings
         </div>
       ) : (
-        <div className="my-2 border-t border-slate-100 mx-2" />
+        <div className="my-2 border-t border-slate-100 dark:border-slate-800 mx-2" />
       )}
 
       <nav className="space-y-1">
@@ -238,21 +238,21 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
                 ? [
                     'flex items-center justify-center w-10 h-10 mx-auto rounded-xl transition relative group',
                     isActive
-                      ? 'bg-brand-purple/15 text-brand-purple font-semibold shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100',
+                      ? 'bg-brand-purple/15 dark:bg-brand-purple/25 text-brand-purple font-semibold shadow-xs'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/70',
                   ].join(' ')
                 : [
                     'flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition',
                     isActive
-                      ? 'bg-brand-purple/10 text-brand-purple font-semibold shadow-xs'
-                      : 'text-slate-600 hover:bg-slate-100',
+                      ? 'bg-brand-purple/10 dark:bg-brand-purple/20 text-brand-purple font-semibold shadow-xs'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/70 hover:text-slate-800 dark:hover:text-white',
                   ].join(' ')
             }
           >
             <Icon size={isCollapsed ? 19 : 18} className="shrink-0" />
             {!isCollapsed && <span className="truncate">{label}</span>}
             {isCollapsed && (
-              <div className="absolute left-full ml-2 px-2.5 py-1 bg-slate-800 text-white text-xs font-medium rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-lg">
+              <div className="absolute left-full ml-2 px-2.5 py-1 bg-slate-800 dark:bg-slate-700 text-white text-xs font-medium rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-lg">
                 {label}
               </div>
             )}
@@ -264,11 +264,11 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
       {user?.role === 'admin' && (
         <>
           {!isCollapsed ? (
-            <div className="text-[11px] uppercase tracking-wider text-slate-400 px-2 mt-5 mb-2 font-semibold">
+            <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 px-2 mt-5 mb-2 font-semibold">
               Admin
             </div>
           ) : (
-            <div className="my-2 border-t border-slate-100 mx-2" />
+            <div className="my-2 border-t border-slate-100 dark:border-slate-800 mx-2" />
           )}
           <nav className="space-y-1">
             {adminItems.map(({ to, label, icon: Icon }) => (
@@ -282,21 +282,21 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
                     ? [
                         'flex items-center justify-center w-10 h-10 mx-auto rounded-xl transition relative group',
                         isActive
-                          ? 'bg-brand-purple/15 text-brand-purple font-semibold shadow-xs'
-                          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100',
+                          ? 'bg-brand-purple/15 dark:bg-brand-purple/25 text-brand-purple font-semibold shadow-xs'
+                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/70',
                       ].join(' ')
                     : [
                         'flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition',
                         isActive
-                          ? 'bg-brand-purple/10 text-brand-purple font-semibold shadow-xs'
-                          : 'text-slate-600 hover:bg-slate-100',
+                          ? 'bg-brand-purple/10 dark:bg-brand-purple/20 text-brand-purple font-semibold shadow-xs'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/70 hover:text-slate-800 dark:hover:text-white',
                       ].join(' ')
                 }
               >
                 <Icon size={isCollapsed ? 19 : 18} className="shrink-0" />
                 {!isCollapsed && <span className="truncate">{label}</span>}
                 {isCollapsed && (
-                  <div className="absolute left-full ml-2 px-2.5 py-1 bg-slate-800 text-white text-xs font-medium rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-lg">
+                  <div className="absolute left-full ml-2 px-2.5 py-1 bg-slate-800 dark:bg-slate-700 text-white text-xs font-medium rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-lg">
                     {label}
                   </div>
                 )}
@@ -307,21 +307,21 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
       )}
 
       {/* ── Bottom: User profile & Logout ── */}
-      <div className="mt-auto pt-3 border-t border-slate-100">
+      <div className="mt-auto pt-3 border-t border-slate-100 dark:border-slate-800">
         {isCollapsed ? (
           <div className="flex flex-col items-center gap-2 py-1">
             <div
-              className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-xs font-bold uppercase relative group cursor-pointer"
+              className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center text-xs font-bold uppercase relative group cursor-pointer"
               title={`User: ${user?.username || 'user'}`}
             >
               {user?.username ? user.username[0].toUpperCase() : <User size={14} />}
-              <div className="absolute left-full ml-2 px-2 py-1 bg-slate-800 text-white text-xs rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-lg">
+              <div className="absolute left-full ml-2 px-2 py-1 bg-slate-800 dark:bg-slate-700 text-white text-xs rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-lg">
                 {user?.username}
               </div>
             </div>
             <button
               onClick={handleLogout}
-              className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+              className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
               title="Logout"
             >
               <LogOut size={16} />
@@ -330,14 +330,14 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
         ) : (
           <div className="flex items-center justify-between px-2 py-1">
             <div className="flex items-center gap-2 min-w-0">
-              <div className="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-xs font-bold uppercase shrink-0">
+              <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center text-xs font-bold uppercase shrink-0">
                 {user?.username ? user.username[0].toUpperCase() : <User size={14} />}
               </div>
-              <span className="text-xs font-medium text-slate-600 truncate">{user?.username || ''}</span>
+              <span className="text-xs font-medium text-slate-600 dark:text-slate-300 truncate">{user?.username || ''}</span>
             </div>
             <button
               onClick={handleLogout}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
               title="Logout"
             >
               <LogOut size={16} />

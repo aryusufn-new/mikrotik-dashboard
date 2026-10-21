@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { AlertCircle, LogIn, ServerCrash, ShieldAlert, WifiOff } from 'lucide-react'
+import ThemeSelector from '../components/ThemeSelector'
 
 function parseError(err) {
   const status = err.response?.status
@@ -81,26 +82,31 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 via-slate-50 to-slate-200 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 p-4 relative transition-colors duration-200">
+      {/* Top right Theme and Language selector */}
+      <div className="fixed top-4 right-4 z-50">
+        <ThemeSelector showLanguage={true} />
+      </div>
+
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="text-3xl font-bold tracking-tight text-slate-800">
+          <div className="text-3xl font-bold tracking-tight text-slate-800 dark:text-white">
             MIMO<span className="text-brand-purple">.SA</span>
           </div>
-          <div className="text-sm text-slate-500 mt-1">Monitoring MikroTik System</div>
+          <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">Monitoring MikroTik System</div>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-card p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-slate-800 text-center">Login</h2>
+        <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 rounded-2xl shadow-card dark:shadow-none p-6 space-y-4">
+          <h2 className="text-lg font-semibold text-slate-800 dark:text-white text-center">Login</h2>
 
           {alert && (() => {
             const Icon = alert.icon
             const colors = {
-              auth: 'bg-rose-50 border-rose-200 text-rose-700',
-              network: 'bg-amber-50 border-amber-200 text-amber-700',
-              timeout: 'bg-amber-50 border-amber-200 text-amber-700',
-              server: 'bg-orange-50 border-orange-200 text-orange-700',
-              unknown: 'bg-rose-50 border-rose-200 text-rose-700',
+              auth: 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300',
+              network: 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-300',
+              timeout: 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-300',
+              server: 'bg-orange-50 dark:bg-orange-950/40 border-orange-200 dark:border-orange-900 text-orange-700 dark:text-orange-300',
+              unknown: 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300',
             }
             return (
               <div className={`flex gap-3 items-start border rounded-xl px-4 py-3 text-sm ${colors[alert.type] || colors.unknown}`}>
@@ -114,7 +120,7 @@ export default function LoginPage() {
           })()}
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Username</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Username</label>
             <input
               type="text"
               value={username}
@@ -122,20 +128,20 @@ export default function LoginPage() {
               required
               autoFocus
               autoComplete="username"
-              className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-purple/40 ${alert?.type === 'auth' ? 'border-rose-300' : 'border-slate-200'}`}
+              className={`w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-purple/40 ${alert?.type === 'auth' ? 'border-rose-300 dark:border-rose-800' : 'border-slate-200 dark:border-slate-700'}`}
               placeholder="admin"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Password</label>
             <input
               type="password"
               value={password}
               onChange={(e) => { setPassword(e.target.value); setAlert(null) }}
               required
               autoComplete="current-password"
-              className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-purple/40 ${alert?.type === 'auth' ? 'border-rose-300' : 'border-slate-200'}`}
+              className={`w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-purple/40 ${alert?.type === 'auth' ? 'border-rose-300 dark:border-rose-800' : 'border-slate-200 dark:border-slate-700'}`}
               placeholder="••••••••"
             />
           </div>
@@ -150,7 +156,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="text-center text-sm text-slate-600 mt-4">
+        <p className="text-center text-sm text-slate-600 dark:text-slate-400 mt-4">
           Belum punya akun? <Link to="/register" className="text-brand-purple hover:underline font-medium">Daftar di sini</Link>
         </p>
       </div>
