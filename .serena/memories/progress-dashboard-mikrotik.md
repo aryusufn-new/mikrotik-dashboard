@@ -58,6 +58,7 @@
 ### 4. File yang Diubah (Commit Terakhir di dev)
 | Commit | Pesan | Deskripsi |
 |--------|-------|-----------|
+| `e03edfd` | `fix(theme): balance port matrix contrast and localize kiosk mode button` | Kontras halus port matrix (down port gelap, up port terang), NOC header responsif, Recharts adaptive theme, tombol Layar Penuh |
 | `da90eb0` | `feat(theme): add dark, light, and system theme switcher with auto-sync and memories` | Sistem tema (Light, Dark, System), navbar theme selector, bahasa, dan dark mode semua halaman |
 | `a2f42f6` | `feat(layout): add collapsible desktop sidebar with icon-only mode and persistent state` | Sidebar collapsible (toggle buka/tutup, mode icon-only 64px, tooltip, auto-persist) |
 | `834d749` | `feat(noc): add incident logs, multi-ping matrix, conntrack meters, saturation alert, and audio alarm` | Implementasi 5 fitur NOC utama di backend & frontend |
