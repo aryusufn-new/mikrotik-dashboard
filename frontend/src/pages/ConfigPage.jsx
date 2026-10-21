@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   CheckCircle,
   Edit3,
@@ -137,6 +138,20 @@ function RouterFormModal({ isOpen, onClose, onSubmit, initial, isEdit }) {
     }
   }, [isOpen, initial])
 
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = prev
+    }
+  }, [isOpen, onClose])
+
   if (!isOpen) return null
 
   const handleChange = (e) => {
@@ -158,10 +173,19 @@ function RouterFormModal({ isOpen, onClose, onSubmit, initial, isEdit }) {
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 z-10 animate-in">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div
+        className="fixed inset-0 bg-slate-900/60 dark:bg-black/75 backdrop-blur-md transition-opacity"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div className="relative bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 z-10 animate-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold text-slate-800 dark:text-white">
             {isEdit ? 'Edit Router' : 'Tambah Router Baru'}
@@ -276,12 +300,27 @@ function RouterFormModal({ isOpen, onClose, onSubmit, initial, isEdit }) {
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
 function DeleteConfirmModal({ isOpen, onClose, onConfirm, router }) {
   const [deleting, setDeleting] = useState(false)
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = prev
+    }
+  }, [isOpen, onClose])
 
   if (!isOpen || !router) return null
 
@@ -292,10 +331,19 @@ function DeleteConfirmModal({ isOpen, onClose, onConfirm, router }) {
     onClose()
   }
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white dark:bg-slate-900 border border-transparent dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-sm p-6 z-10">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div
+        className="fixed inset-0 bg-slate-900/60 dark:bg-black/75 backdrop-blur-md transition-opacity"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div className="relative bg-white dark:bg-slate-900 border border-transparent dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-sm p-6 z-10 animate-in zoom-in-95 duration-200">
         <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-2">Hapus Router?</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">
           Router <strong className="text-slate-800 dark:text-slate-200">{router.name}</strong> ({router.host}) akan dihapus permanen.
@@ -317,7 +365,8 @@ function DeleteConfirmModal({ isOpen, onClose, onConfirm, router }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 

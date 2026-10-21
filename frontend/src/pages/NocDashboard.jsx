@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Area,
   AreaChart,
@@ -1020,62 +1021,75 @@ export default function NocDashboard() {
       </div>
 
       {/* ── Feature 4: Modal Setting Kapasitas ISP ── */}
-      {showCapModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in">
-          <form
-            onSubmit={handleSaveCapacity}
-            className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-sm w-full p-5 border border-slate-200 dark:border-slate-800"
+      {showCapModal &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowCapModal(false)
+            }}
           >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="font-bold text-base text-slate-800 dark:text-white">{t.capacityModalTitle}</h3>
-              <button
-                type="button"
-                onClick={() => setShowCapModal(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-sm font-semibold"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1 block">
-                  {t.subscriptionCapacity}
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="100000"
-                  value={capInput}
-                  onChange={(e) => setCapInput(e.target.value)}
-                  className="w-full border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl px-3 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
-                  placeholder={t.capacityPlaceholder}
-                  required
-                />
+            {/* Full-screen backdrop */}
+            <div
+              className="fixed inset-0 bg-slate-900/60 dark:bg-black/75 backdrop-blur-md transition-opacity"
+              onClick={() => setShowCapModal(false)}
+              aria-hidden="true"
+            />
+            <form
+              onSubmit={handleSaveCapacity}
+              className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-sm w-full p-5 border border-slate-200/90 dark:border-slate-800 z-10 animate-in zoom-in-95 duration-200"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                <h3 className="font-bold text-base text-slate-800 dark:text-white">{t.capacityModalTitle}</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowCapModal(false)}
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-sm font-semibold"
+                >
+                  ✕
+                </button>
               </div>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                {t.capacityModalHelp}
-              </p>
-            </div>
 
-            <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowCapModal(false)}
-                className="px-3.5 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
-              >
-                {t.btnBatal}
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold rounded-xl transition shadow"
-              >
-                {t.btnSimpan}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+              <div className="mt-4 space-y-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1 block">
+                    {t.subscriptionCapacity}
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100000"
+                    value={capInput}
+                    onChange={(e) => setCapInput(e.target.value)}
+                    className="w-full border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl px-3 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                    placeholder={t.capacityPlaceholder}
+                    required
+                  />
+                </div>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                  {t.capacityModalHelp}
+                </p>
+              </div>
+
+              <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCapModal(false)}
+                  className="px-3.5 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
+                >
+                  {t.btnBatal}
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold rounded-xl transition shadow"
+                >
+                  {t.btnSimpan}
+                </button>
+              </div>
+            </form>
+          </div>,
+          document.body
+        )}
 
       {/* ── Modal Dialog: Port Detail Inspector ── */}
       {selectedPort && (
@@ -1094,9 +1108,36 @@ function PortDetailModal({ port, onClose }) {
   const rx = liveTraffic?.rx_bps > 0 ? liveTraffic.rx_bps : (port.rx_bps || 0)
   const tx = liveTraffic?.tx_bps > 0 ? liveTraffic.tx_bps : (port.tx_bps || 0)
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full p-5 border border-slate-200 dark:border-slate-800">
+  // Close on Escape & Lock body scroll while modal is active
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [onClose])
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      {/* Full-screen backdrop overlay */}
+      <div
+        className="fixed inset-0 bg-slate-900/60 dark:bg-black/75 backdrop-blur-md transition-opacity"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {/* Modal Dialog Card */}
+      <div className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full p-5 border border-slate-200/90 dark:border-slate-800 z-10 animate-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-2">
             <span
@@ -1174,6 +1215,7 @@ function PortDetailModal({ port, onClose }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

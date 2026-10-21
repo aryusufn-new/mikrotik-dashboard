@@ -137,3 +137,30 @@ export default function MyComponent() {
    - Jika mode **ID (Bahasa Indonesia)** aktif: 100% kosakata menggunakan Bahasa Indonesia baku jaringan.
    - Jika mode **EN (English)** aktif: 100% kosakata menggunakan Bahasa Inggris murni.
    - Istilah teknis RouterOS (seperti nama interface `ether1`, `sfp1`, `bps`, `Mbps`, `PPPoE`, `DHCP`, `DNS`, alamat IP & MAC) tetap presisi sesuai spesifikasi teknis jaringan.
+
+---
+
+## 8. Perbaikan Bug Background / Backdrop Pop-up (Modal Overlay)
+
+### A. Akar Masalah
+1. **Stacking Context Isolation**: Modal sebelumnya dirender secara in-tree di dalam elemen `<main>`. Karena elemen `<header>` (`sticky top-0 z-30`) dan `<Sidebar>` (`z-50`) berada pada konteks penumpukan (*stacking context*) sejajar atau di atas `<main>`, overlay `fixed inset-0 z-50` yang berada di dalam `<main>` tidak dapat menutupi header dan sidebar secara sempurna, sehingga meninggalkan celah/garis putih dan latar belakang yang tidak blur menyeluruh di sekeliling pop-up.
+2. **Ketiadaan Scroll-Lock & Keydown Escape**: Halaman di balik modal masih bisa di-scroll saat modal terbuka, dan menekan tombol keyboard `Escape` tidak menutup modal.
+3. **Kontras Backdrop Kasar**: Class `bg-black/40 backdrop-blur-sm` pada tema terang terlihat abu-abu kusam/washed-out, sementara pada tema gelap kurang solid.
+
+### B. Solusi yang Diterapkan
+1. **React Portal (`createPortal(..., document.body)`)**:
+   - Seluruh modal dipindahkan keluar dari pohon DOM lokal dan di-mount langsung ke `document.body`.
+   - Z-index dinaikkan menjadi `z-[100]` sehingga menjamin modal 100% berada di atas navbar, sidebar, toast, dan seluruh layer lainnya di semua ukuran layar dan mode fullscreen (kiosk).
+2. **Backdrop Seimbang & Halus**:
+   - Overlay backdrop menggunakan `fixed inset-0 bg-slate-900/60 dark:bg-black/75 backdrop-blur-md transition-opacity`.
+   - Menghasilkan efek blur modern (*frosted glass*) dengan kontras seimbang di tema Terang maupun Gelap tanpa menyilaukan mata atau terlihat belang.
+3. **Interaktivitas Lengkap**:
+   - **Click Outside**: Mengklik area backdrop langsung menutup pop-up modal.
+   - **Escape Key Listener**: Menekan tombol `Escape` pada keyboard otomatis menutup modal.
+   - **Body Scroll Lock**: Saat modal aktif, `document.body.style.overflow = 'hidden'` otomatis dipasang dan dipulihkan kembali saat modal ditutup.
+4. **Halaman yang Ditangani**:
+   - `frontend/src/pages/NocDashboard.jsx` (`PortDetailModal`, `showCapModal`)
+   - `frontend/src/pages/PppoeMonitor.jsx` (`UserTrafficModal`)
+   - `frontend/src/pages/HotspotMonitor.jsx` (`UserTrafficModal`)
+   - `frontend/src/pages/ConfigPage.jsx` (`RouterFormModal`, `DeleteConfirmModal`)
+

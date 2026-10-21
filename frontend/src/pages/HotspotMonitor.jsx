@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Users, Wifi, WifiOff, Activity, X } from 'lucide-react'
 import { getHotspotActive, getHotspotStats, getHotspotUsers } from '../api'
 import { useRouter } from '../context/RouterContext'
@@ -31,13 +32,35 @@ function StatCard({ title, value, color, Icon }) {
 function UserTrafficModal({ username, historyData, currentTraffic, onClose }) {
   if (!username) return null
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = prev
+    }
+  }, [onClose])
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="fixed inset-0 bg-slate-900/60 dark:bg-black/75 backdrop-blur-md transition-opacity"
+        onClick={onClose}
+        aria-hidden="true"
+      />
       
       {/* Modal Content */}
-      <div className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl p-6 z-10 animate-in">
+      <div className="relative bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl p-6 z-10 animate-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
@@ -114,13 +137,14 @@ function UserTrafficModal({ username, historyData, currentTraffic, onClose }) {
           </ResponsiveContainer>
         </div>
 
-        <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100 text-xs text-slate-400">
+        <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-400 dark:text-slate-500">
           <div>IP Address: {currentTraffic?.address || '-'}</div>
           <div>MAC Address: {currentTraffic?.mac_address || '-'}</div>
           <div>Uptime: {currentTraffic?.uptime || '-'}</div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
