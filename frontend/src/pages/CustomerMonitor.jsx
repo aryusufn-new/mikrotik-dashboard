@@ -1304,28 +1304,32 @@ export default function CustomerMonitor() {
         {/* Total Pelanggan */}
         <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Total Pelanggan</span>
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+              {t.totalCustomers || 'Total Pelanggan'}
+            </span>
             <Users size={16} className="text-slate-400" />
           </div>
           <div className="mt-2 text-2xl font-bold text-slate-800 dark:text-white">
             {stats.total}
           </div>
           <div className="text-[11px] text-slate-400 mt-0.5">
-            {stats.active} aktif berlangganan
+            {stats.active} {t.activeSubscribers || 'aktif berlangganan'}
           </div>
         </div>
 
         {/* Online PPPoE */}
         <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Online PPPoE</span>
+            <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+              {t.onlinePppoe || 'Online PPPoE'}
+            </span>
             <Wifi size={16} className="text-emerald-500" />
           </div>
           <div className="mt-2 text-2xl font-bold text-emerald-600 dark:text-emerald-400">
             {customers.filter((c) => c.is_pppoe_online).length}
           </div>
           <div className="text-[11px] text-slate-400 mt-0.5">
-            Sesi aktif di MikroTik
+            {t.activeSessionsInMikrotik || 'Sesi aktif di MikroTik'}
           </div>
         </div>
 
@@ -1339,7 +1343,9 @@ export default function CustomerMonitor() {
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Normal (Optimal)</span>
+            <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+              {t.optNormal || 'Normal (Optimal)'}
+            </span>
             <CheckCircle2 size={16} className="text-emerald-500" />
           </div>
           <div className="mt-2 text-2xl font-bold text-emerald-600 dark:text-emerald-400">
@@ -1358,7 +1364,9 @@ export default function CustomerMonitor() {
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">Waspada (Tinggi)</span>
+            <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">
+              {t.optWarning || 'Waspada (Tinggi)'}
+            </span>
             <AlertTriangle size={16} className="text-amber-500" />
           </div>
           <div className="mt-2 text-2xl font-bold text-amber-600 dark:text-amber-400">
@@ -1377,13 +1385,17 @@ export default function CustomerMonitor() {
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-rose-600 dark:text-rose-400">Kritis / LOS</span>
+            <span className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+              {t.optCriticalLos || 'Kritis / LOS'}
+            </span>
             <ShieldAlert size={16} className="text-rose-500" />
           </div>
           <div className="mt-2 text-2xl font-bold text-rose-600 dark:text-rose-400">
             {stats.critical + stats.los}
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">&lt; -27 dBm (Perlu Cek)</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">
+            &lt; -27 dBm ({t.needInspection || 'Perlu Cek'})
+          </div>
         </div>
       </div>
 
@@ -1435,11 +1447,11 @@ export default function CustomerMonitor() {
         {loading ? (
           <div className="py-16 flex flex-col items-center justify-center text-slate-400 gap-2">
             <Loader2 size={28} className="animate-spin text-violet-500" />
-            <span className="text-xs">Memuat data pelanggan & telemetri OLT...</span>
+            <span className="text-xs">{t.loadingCustomerData || 'Memuat data pelanggan & telemetri OLT...'}</span>
           </div>
         ) : customers.length === 0 ? (
           <div className="py-16 text-center text-slate-400 text-sm">
-            Tidak ada pelanggan yang cocok dengan kriteria pencarian atau filter.
+            {t.noCustomersFound || 'Tidak ada pelanggan yang cocok dengan kriteria pencarian atau filter.'}
           </div>
         ) : (
           <div className="overflow-x-auto">

@@ -559,12 +559,13 @@ def get_customers(
     search: Optional[str] = None,
     status: Optional[str] = None,
     olt_id: Optional[int] = None,
+    filter_router_id: Optional[int] = None,
     router_id: Optional[int] = Depends(_get_router_id),
     user: dict = Depends(get_current_user),
 ):
     customers = db.list_customers(
         user_id=user["id"],
-        router_id=router_id,
+        router_id=filter_router_id,
         olt_id=olt_id,
         search=search,
         status_filter=status,
@@ -598,8 +599,15 @@ def get_customers(
 
 
 @router.post("/customers")
-def create_customer(body: CustomerCreate, user: dict = Depends(get_current_user)):
-    cid = db.add_customer(user["id"], **body.model_dump())
+def create_customer(
+    body: CustomerCreate,
+    router_id: Optional[int] = Depends(_get_router_id),
+    user: dict = Depends(get_current_user),
+):
+    data = body.model_dump()
+    if not data.get("router_id") and router_id:
+        data["router_id"] = router_id
+    cid = db.add_customer(user["id"], **data)
     cust = db.get_customer(cid, user["id"])
     if cust and cust.get("olt_id"):
         olt = db.get_olt(cust["olt_id"], user["id"])
@@ -680,10 +688,9 @@ def check_single_optical(customer_id: int, user: dict = Depends(get_current_user
 @router.post("/customers/check-optical-all")
 def check_all_optical(
     olt_id: Optional[int] = None,
-    router_id: Optional[int] = Depends(_get_router_id),
     user: dict = Depends(get_current_user),
 ):
-    customers = db.list_customers(user_id=user["id"], router_id=router_id, olt_id=olt_id)
+    customers = db.list_customers(user_id=user["id"], olt_id=olt_id)
     olts = {o["id"]: o for o in db.list_olts(user["id"])}
     default_olt = {"name": "Default OLT", "brand": "vsol", "host": "192.168.1.1"}
 
@@ -718,7 +725,7 @@ def sync_pppoe(router_id: Optional[int] = Depends(_get_router_id), user: dict = 
     active = _safe(mikrotik.ppp_active_list, user["id"], router_id)
     active_map = {s.get("name"): s for s in active if s.get("name")}
 
-    existing_customers = db.list_customers(user_id=user["id"], router_id=router_id)
+    existing_customers = db.list_customers(user_id=user["id"])
     existing_users = {c.get("pppoe_username") for c in existing_customers if c.get("pppoe_username")}
 
     unregistered_secrets = []

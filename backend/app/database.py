@@ -167,7 +167,13 @@ def init_db():
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
                 """, (admin_id, 'OLT VSOL Sentral V1600G', 'vsol', '192.168.10.1', 161, 'public', 23, 'admin', 'admin', 8, 'OLT Utama Distribusi Fiber Optik FTTH'))
                 sample_olt_id = cur.fetchone()[0]
+                conn.commit()
+            else:
+                cur.execute("SELECT id FROM olts WHERE user_id = %s ORDER BY id ASC LIMIT 1", (admin_id,))
+                sample_olt_id = cur.fetchone()[0]
 
+            cur.execute("SELECT COUNT(*) FROM customers WHERE user_id = %s", (admin_id,))
+            if cur.fetchone()[0] == 0:
                 cur.execute("""
                     INSERT INTO customers (user_id, olt_id, name, phone, address, odp_name, pppoe_username, pon_port, onu_id, onu_sn, onu_model, package_name, status, last_rx_power, last_tx_power, last_olt_rx, last_distance, last_optical_status, last_checked_at)
                     VALUES
@@ -585,7 +591,7 @@ def list_customers(
             params: list = [user_id]
 
             if router_id is not None:
-                query += " AND c.router_id = %s"
+                query += " AND (c.router_id = %s OR c.router_id IS NULL)"
                 params.append(router_id)
 
             if olt_id is not None:

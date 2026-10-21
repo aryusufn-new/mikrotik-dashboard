@@ -167,6 +167,13 @@ export const translations = {
     btnCekRedaman: 'Cek Redaman',
     btnWhatsApp: 'Hubungi WA',
     lastChecked: 'Terakhir dicek:',
+    activeSubscribers: 'aktif berlangganan',
+    onlinePppoe: 'Online PPPoE',
+    activeSessionsInMikrotik: 'Sesi aktif di MikroTik',
+    optCriticalLos: 'Kritis / LOS',
+    needInspection: 'Perlu Cek',
+    noCustomersFound: 'Tidak ada pelanggan yang cocok dengan kriteria pencarian atau filter.',
+    loadingCustomerData: 'Memuat data pelanggan & telemetri OLT...',
   },
   en: {
     // Header & Brand
@@ -334,6 +341,13 @@ export const translations = {
     btnCekRedaman: 'Check Power',
     btnWhatsApp: 'WhatsApp',
     lastChecked: 'Last checked:',
+    activeSubscribers: 'active subscribers',
+    onlinePppoe: 'Online PPPoE',
+    activeSessionsInMikrotik: 'Active sessions in MikroTik',
+    optCriticalLos: 'Critical / LOS',
+    needInspection: 'Needs Check',
+    noCustomersFound: 'No customers found matching search criteria or filters.',
+    loadingCustomerData: 'Loading customer data & OLT telemetry...',
   },
 }
 
