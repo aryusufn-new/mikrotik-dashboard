@@ -3,8 +3,10 @@ import { Outlet } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
 import Sidebar from './Sidebar'
 import ThemeSelector from '../components/ThemeSelector'
+import { useLanguage } from '../context/LanguageContext'
 
 export default function AppLayout() {
+  const { t } = useLanguage()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -74,7 +76,7 @@ export default function AppLayout() {
           <div className="flex items-center gap-3">
             <div className="lg:hidden w-8" />
             <span className="hidden sm:inline-block text-xs font-medium text-slate-400 dark:text-slate-500">
-              MIMO.SA &bull; Monitoring MikroTik System
+              {t.appSubtitle}
             </span>
           </div>
 

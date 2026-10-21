@@ -1,6 +1,7 @@
 import React from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { ThemeProvider } from './context/ThemeContext'
+import { LanguageProvider } from './context/LanguageContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { RouterProvider } from './context/RouterContext'
 import AppLayout from './layouts/AppLayout'
@@ -38,26 +39,28 @@ export default function App() {
   return (
     <BrowserRouter>
       <ThemeProvider>
-        <AuthProvider>
-          <RouterProvider>
-          <Routes>
-            <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
-            <Route path="/register" element={<GuestOnly><RegisterPage /></GuestOnly>} />
-            <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
-              <Route index element={<Navigate to="/noc" replace />} />
-              <Route path="/noc" element={<Wrap><NocDashboard /></Wrap>} />
-              <Route path="/device" element={<Wrap><DeviceMonitor /></Wrap>} />
-              <Route path="/interfaces" element={<Wrap><InterfaceTraffic /></Wrap>} />
-              <Route path="/pppoe" element={<Wrap><PppoeMonitor /></Wrap>} />
-              <Route path="/hotspot" element={<Wrap><HotspotMonitor /></Wrap>} />
-              <Route path="/topology" element={<Wrap><NetworkTopology /></Wrap>} />
-              <Route path="/config" element={<Wrap><ConfigPage /></Wrap>} />
-              <Route path="/admin/logs" element={<Wrap><AdminLogs /></Wrap>} />
-              <Route path="*" element={<Navigate to="/noc" replace />} />
-            </Route>
-          </Routes>
-        </RouterProvider>
-      </AuthProvider>
+        <LanguageProvider>
+          <AuthProvider>
+            <RouterProvider>
+            <Routes>
+              <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
+              <Route path="/register" element={<GuestOnly><RegisterPage /></GuestOnly>} />
+              <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
+                <Route index element={<Navigate to="/noc" replace />} />
+                <Route path="/noc" element={<Wrap><NocDashboard /></Wrap>} />
+                <Route path="/device" element={<Wrap><DeviceMonitor /></Wrap>} />
+                <Route path="/interfaces" element={<Wrap><InterfaceTraffic /></Wrap>} />
+                <Route path="/pppoe" element={<Wrap><PppoeMonitor /></Wrap>} />
+                <Route path="/hotspot" element={<Wrap><HotspotMonitor /></Wrap>} />
+                <Route path="/topology" element={<Wrap><NetworkTopology /></Wrap>} />
+                <Route path="/config" element={<Wrap><ConfigPage /></Wrap>} />
+                <Route path="/admin/logs" element={<Wrap><AdminLogs /></Wrap>} />
+                <Route path="*" element={<Navigate to="/noc" replace />} />
+              </Route>
+            </Routes>
+          </RouterProvider>
+        </AuthProvider>
+      </LanguageProvider>
     </ThemeProvider>
   </BrowserRouter>
   )

@@ -37,6 +37,7 @@ import {
 } from 'lucide-react'
 import { useRouter } from '../context/RouterContext'
 import { useTheme } from '../context/ThemeContext'
+import { useLanguage } from '../context/LanguageContext'
 import { getNocOverview } from '../api'
 import useInterfacesWS from '../hooks/useInterfacesWS'
 import useTrafficWS from '../hooks/useTrafficWS'
@@ -65,6 +66,7 @@ function playWarningBeep() {
 export default function NocDashboard() {
   const { activeRouterId, activeRouter } = useRouter()
   const { resolvedTheme } = useTheme()
+  const { t, language } = useLanguage()
   const [nocData, setNocData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -252,9 +254,9 @@ export default function NocDashboard() {
   if (!activeRouterId) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-slate-400">
-        <Server size={48} className="mb-3 text-slate-300" />
-        <p className="text-lg font-medium text-slate-700">Router Belum Dipilih</p>
-        <p className="text-sm text-slate-500 mt-1">Pilih atau tambahkan router dari menu Konfigurasi</p>
+        <Server size={48} className="mb-3 text-slate-300 dark:text-slate-600" />
+        <p className="text-lg font-medium text-slate-700 dark:text-slate-200">{t.noRouterTitle}</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t.noRouterDesc}</p>
       </div>
     )
   }
@@ -270,10 +272,10 @@ export default function NocDashboard() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">NOC Command Center</h1>
+                <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">{t.nocTitle}</h1>
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-ping" />
-                  LIVE TELEMETRY
+                  {t.liveTelemetry}
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -313,7 +315,7 @@ export default function NocDashboard() {
                           {mp.name}
                         </div>
                         <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-200 leading-tight font-mono">
-                          {lat != null ? `${lat} ms` : isOnline ? '< 1 ms' : 'Down'}
+                          {lat != null ? `${lat} ms` : isOnline ? '< 1 ms' : (language === 'en' ? 'Down' : 'Mati')}
                         </div>
                       </div>
                     </div>
@@ -322,14 +324,14 @@ export default function NocDashboard() {
               ) : (
                 <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 rounded-xl px-3 py-1.5 text-xs text-slate-500 dark:text-slate-300">
                   <Activity size={15} className="text-emerald-500 dark:text-emerald-400" />
-                  <span>Checking uplink...</span>
+                  <span>{t.checkingUplink}</span>
                 </div>
               )}
             </div>
 
             {/* Uptime pill */}
             <div className="bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 rounded-xl px-3 py-1.5">
-              <div className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-400">Uptime</div>
+              <div className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-400">{t.uptime}</div>
               <div className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate max-w-[150px]">
                 {formatUptime(res?.uptime)}
               </div>
@@ -343,10 +345,10 @@ export default function NocDashboard() {
                   ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/40 hover:bg-emerald-100 dark:hover:bg-emerald-500/30'
                   : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
               }`}
-              title={soundEnabled ? 'Alarm Suara Link Down: ON' : 'Alarm Suara Link Down: OFF'}
+              title={soundEnabled ? t.alarmTitleOn : t.alarmTitleOff}
             >
               {soundEnabled ? <Volume2 size={14} className="text-emerald-500 dark:text-emerald-400" /> : <VolumeX size={14} />}
-              <span>{soundEnabled ? 'Alarm ON' : 'Mute'}</span>
+              <span>{soundEnabled ? t.alarmOn : t.alarmMute}</span>
             </button>
 
             {/* Controls */}
@@ -354,7 +356,7 @@ export default function NocDashboard() {
               onClick={() => fetchTelemetry(true)}
               disabled={refreshing}
               className="p-2 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl border border-slate-200 dark:border-slate-700 transition"
-              title="Refresh Data"
+              title={t.refreshData}
             >
               <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
             </button>
@@ -362,10 +364,10 @@ export default function NocDashboard() {
             <button
               onClick={toggleFullscreen}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold rounded-xl transition shadow-sm"
-              title="Mode Kiosk / Tampilan Layar Penuh (NOC TV Wall)"
+              title={t.kioskTooltip}
             >
               {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-              <span>{isFullscreen ? 'Keluar Layar Penuh' : 'Layar Penuh'}</span>
+              <span>{isFullscreen ? t.keluarLayarPenuh : t.layarPenuh}</span>
             </button>
           </div>
         </div>
@@ -380,10 +382,10 @@ export default function NocDashboard() {
             </div>
             <div>
               <div className="text-sm font-bold tracking-wide uppercase">
-                Link Saturation Warning! ({capPct}% Capacity Used)
+                {t.saturationWarning} ({capPct}% {t.saturationCapacityUsed})
               </div>
               <div className="text-xs text-rose-100">
-                Throughput interface <strong>{selectedIface}</strong> mencapai {formatBps(maxIfaceThroughput)} dari batas kapasitas ISP {wanCapacityMbps} Mbps.
+                {t.saturationText1} <strong>{selectedIface}</strong> {t.saturationText2} {formatBps(maxIfaceThroughput)} {t.saturationText3} {wanCapacityMbps} Mbps.
               </div>
             </div>
           </div>
@@ -391,7 +393,7 @@ export default function NocDashboard() {
             onClick={() => setShowCapModal(true)}
             className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-xl text-xs font-semibold backdrop-blur-sm transition"
           >
-            Sesuaikan Kapasitas
+            {t.adjustCapacity}
           </button>
         </div>
       )}
@@ -408,16 +410,16 @@ export default function NocDashboard() {
         {/* CPU Load */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-card dark:shadow-none border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
           <div className="flex items-center justify-between text-slate-400 dark:text-slate-500 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">CPU Load</span>
+            <span className="text-xs font-semibold uppercase tracking-wider">{t.cpuLoad}</span>
             <Cpu size={16} className="text-violet-500" />
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-bold text-slate-800 dark:text-slate-100">{res?.cpu_load ?? 0}%</span>
-            <span className="text-xs text-slate-400 dark:text-slate-500">Total</span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">{t.cpuTotal}</span>
           </div>
           {cpuCores.length > 1 ? (
             <div className="mt-2.5 space-y-1">
-              <div className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">Per Core:</div>
+              <div className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">{t.cpuPerCore}</div>
               <div className="grid grid-cols-2 gap-1.5">
                 {cpuCores.slice(0, 8).map((c) => (
                   <div key={c.core} className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400">
@@ -450,7 +452,7 @@ export default function NocDashboard() {
         {/* RAM Usage */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-card dark:shadow-none border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
           <div className="flex items-center justify-between text-slate-400 dark:text-slate-500 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">RAM Memory</span>
+            <span className="text-xs font-semibold uppercase tracking-wider">{t.ramMemory}</span>
             <Server size={16} className="text-emerald-500" />
           </div>
           <div>
@@ -472,17 +474,17 @@ export default function NocDashboard() {
         {/* Feature 3: Firewall Conntrack Table */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-card dark:shadow-none border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
           <div className="flex items-center justify-between text-slate-400 dark:text-slate-500 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Conntrack Table</span>
+            <span className="text-xs font-semibold uppercase tracking-wider">{t.conntrackTable}</span>
             <Network size={16} className="text-sky-500" />
           </div>
           <div>
             <div className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-              {dhcpConntrack?.conntrack_pct != null ? `${dhcpConntrack.conntrack_pct}%` : 'Normal'}
+              {dhcpConntrack?.conntrack_pct != null ? `${dhcpConntrack.conntrack_pct}%` : t.conntrackNormal}
             </div>
             <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
               {dhcpConntrack?.conntrack_total != null
                 ? `${dhcpConntrack.conntrack_total.toLocaleString()} / ${dhcpConntrack.conntrack_max.toLocaleString()}`
-                : 'Firewall Tracking'}
+                : t.conntrackFirewall}
             </div>
           </div>
           <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 mt-3 overflow-hidden">
@@ -502,7 +504,7 @@ export default function NocDashboard() {
         {/* Feature 3: DHCP IP Pool Meter */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-card dark:shadow-none border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
           <div className="flex items-center justify-between text-slate-400 dark:text-slate-500 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">DHCP Leases</span>
+            <span className="text-xs font-semibold uppercase tracking-wider">{t.dhcpLeases}</span>
             <Database size={16} className="text-indigo-500" />
           </div>
           <div>
@@ -510,19 +512,19 @@ export default function NocDashboard() {
               {dhcpConntrack?.dhcp_bound_leases ?? 0}
             </div>
             <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-              Active bound ({dhcpConntrack?.dhcp_pool_count ?? 0} pools defined)
+              {t.dhcpActiveBound} ({dhcpConntrack?.dhcp_pool_count ?? 0} {t.dhcpPoolsDefined})
             </div>
           </div>
           <div className="flex items-center gap-1.5 mt-3 text-xs text-slate-500 dark:text-slate-400">
             <CheckCircle2 size={13} className="text-emerald-500" />
-            <span>Pool Capacity Normal</span>
+            <span>{t.poolCapacityNormal}</span>
           </div>
         </div>
 
         {/* Temperature Sensors */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-card dark:shadow-none border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
           <div className="flex items-center justify-between text-slate-400 dark:text-slate-500 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Temperatur</span>
+            <span className="text-xs font-semibold uppercase tracking-wider">{t.temperature}</span>
             <Thermometer size={16} className="text-amber-500" />
           </div>
           <div>
@@ -531,10 +533,10 @@ export default function NocDashboard() {
                 ? `${health.cpu_temperature}°C`
                 : health?.temperature != null
                 ? `${health.temperature}°C`
-                : 'Normal'}
+                : t.optimal}
             </div>
             <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-              {health?.board_temperature != null ? `Board: ${health.board_temperature}°C` : 'Sensor Thermal'}
+              {health?.board_temperature != null ? `Board: ${health.board_temperature}°C` : t.sensorThermal}
             </div>
           </div>
           <div className="flex items-center gap-2 mt-3 text-xs text-slate-500 dark:text-slate-400">
@@ -543,14 +545,14 @@ export default function NocDashboard() {
                 (health?.cpu_temperature || health?.temperature) > 70 ? 'bg-rose-500' : 'bg-emerald-500'
               }`}
             />
-            <span>{(health?.cpu_temperature || health?.temperature) > 70 ? 'High Temp' : 'Optimal'}</span>
+            <span>{(health?.cpu_temperature || health?.temperature) > 70 ? t.highTemp : t.optimal}</span>
           </div>
         </div>
 
         {/* Storage / HDD */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-card dark:shadow-none border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
           <div className="flex items-center justify-between text-slate-400 dark:text-slate-500 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Storage Disk</span>
+            <span className="text-xs font-semibold uppercase tracking-wider">{t.storageDisk}</span>
             <HardDrive size={16} className="text-rose-500" />
           </div>
           <div>
@@ -575,32 +577,32 @@ export default function NocDashboard() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div>
             <div className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
-              <span>Port Matrix & Physical Link</span>
-              <span className="text-xs font-normal text-slate-400 dark:text-slate-500">({mergedPorts.length} interfaces detected)</span>
+              <span>{t.portMatrixTitle}</span>
+              <span className="text-xs font-normal text-slate-400 dark:text-slate-500">({mergedPorts.length} {t.interfacesDetected})</span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Panel visual status link port fisik, negosiasi speed, packet error, dan drops (klik port untuk inspeksi detail)
+              {t.portMatrixSubtitle}
             </p>
           </div>
 
           {/* Quick summary badges */}
           <div className="flex items-center gap-2 text-xs">
             <span className="px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-semibold rounded-lg border border-emerald-200 dark:border-emerald-900/60">
-              {portsSummary?.running ?? 0} Up
+              {portsSummary?.running ?? 0} {t.portUp}
             </span>
             <span className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 font-semibold rounded-lg border border-slate-200 dark:border-slate-700">
-              {portsSummary?.down ?? 0} Down
+              {portsSummary?.down ?? 0} {t.portDown}
             </span>
             {(portsSummary?.rx_drop > 0 || portsSummary?.tx_drop > 0) && (
               <span className="px-2.5 py-1 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 font-semibold rounded-lg border border-amber-200 dark:border-amber-900/60 flex items-center gap-1">
                 <AlertTriangle size={12} />
-                {(portsSummary?.rx_drop || 0) + (portsSummary?.tx_drop || 0)} Drops
+                {(portsSummary?.rx_drop || 0) + (portsSummary?.tx_drop || 0)} {t.portDrops}
               </span>
             )}
             {(portsSummary?.rx_error > 0 || portsSummary?.tx_error > 0) && (
               <span className="px-2.5 py-1 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 font-semibold rounded-lg border border-rose-200 dark:border-rose-900/60 flex items-center gap-1">
                 <XCircle size={12} />
-                {(portsSummary?.rx_error || 0) + (portsSummary?.tx_error || 0)} Errors
+                {(portsSummary?.rx_error || 0) + (portsSummary?.tx_error || 0)} {t.portErrors}
               </span>
             )}
           </div>
@@ -652,7 +654,7 @@ export default function NocDashboard() {
                       {isSfp ? 'SFP' : 'RJ45'}
                     </span>
                     <span className="text-[8px] opacity-75">
-                      {port.speed ? String(port.speed).replace('bps', '') : isUp ? '1G' : 'DOWN'}
+                      {port.speed ? String(port.speed).replace('bps', '') : isUp ? '1G' : t.portStatusDown}
                     </span>
                   </div>
                 </div>
@@ -691,9 +693,9 @@ export default function NocDashboard() {
             <div>
               <div className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
                 <Activity size={16} className="text-violet-600" />
-                <span>Interface Throughput ({selectedIface || '-'})</span>
+                <span>{t.ifaceThroughputTitle} ({selectedIface || '-'})</span>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Live RX & TX bandwidth interface terpilih langsung dari RouterOS</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{t.ifaceThroughputSubtitle}</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
@@ -704,10 +706,10 @@ export default function NocDashboard() {
                   setShowCapModal(true)
                 }}
                 className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 transition"
-                title="Atur Ambang Batas Kapasitas ISP"
+                title={t.capacityModalTitle}
               >
                 <Settings size={13} />
-                <span>Cap: <strong>{wanCapacityMbps} Mbps</strong> ({capPct}%)</span>
+                <span>{t.capLabel} <strong>{wanCapacityMbps} Mbps</strong> ({capPct}%)</span>
               </button>
 
               {/* Dropdown Interface Selector */}
@@ -718,7 +720,7 @@ export default function NocDashboard() {
               >
                 {mergedPorts.map((p) => (
                   <option key={p.name} value={p.name} className="dark:bg-slate-900 dark:text-slate-200">
-                    {p.name} {p.running ? '● Up' : '○ Down'} {p.comment ? `— ${p.comment}` : ''}
+                    {p.name} {p.running ? `● ${t.portUp}` : `○ ${t.portDown}`} {p.comment ? `— ${p.comment}` : ''}
                   </option>
                 ))}
               </select>
@@ -754,8 +756,8 @@ export default function NocDashboard() {
                 <XAxis dataKey="t" tick={{ fontSize: 10, fill: '#94a3b8' }} interval="preserveStartEnd" />
                 <YAxis tickFormatter={(v) => formatBps(v)} tick={{ fontSize: 10, fill: '#94a3b8' }} />
                 <Tooltip
-                  formatter={(val, name) => [formatBps(val), name === 'rx' ? 'Download (RX)' : 'Upload (TX)']}
-                  labelFormatter={(lbl) => `Waktu: ${lbl}`}
+                  formatter={(val, name) => [formatBps(val), name === 'rx' ? t.chartDownload : t.chartUpload]}
+                  labelFormatter={(lbl) => `${t.chartTime} ${lbl}`}
                   contentStyle={{
                     backgroundColor: resolvedTheme === 'dark' ? '#0f172a' : '#ffffff',
                     borderColor: resolvedTheme === 'dark' ? '#334155' : '#e2e8f0',
@@ -772,9 +774,9 @@ export default function NocDashboard() {
           </div>
 
           <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
-            <span>Port: <strong className="text-slate-800 dark:text-slate-200">{selectedIface || '-'}</strong> ({currentIfaceObj?.running ? 'Running' : 'Down'})</span>
-            <span>Speed: <strong className="text-slate-700 dark:text-slate-300">{currentIfaceObj?.speed || '1 Gbps'}</strong></span>
-            <span>Total Akumulasi: <strong className="text-sky-600 dark:text-sky-400">↓ {formatBytes(currentIfaceObj?.rx_byte)}</strong> / <strong className="text-orange-600 dark:text-orange-400">↑ {formatBytes(currentIfaceObj?.tx_byte)}</strong></span>
+            <span>{t.ifacePort} <strong className="text-slate-800 dark:text-slate-200">{selectedIface || '-'}</strong> ({currentIfaceObj?.running ? t.ifaceRunning : t.ifaceDown})</span>
+            <span>{t.ifaceSpeed} <strong className="text-slate-700 dark:text-slate-300">{currentIfaceObj?.speed || '1 Gbps'}</strong></span>
+            <span>{t.cumulativeTotal} <strong className="text-sky-600 dark:text-sky-400">↓ {formatBytes(currentIfaceObj?.rx_byte)}</strong> / <strong className="text-orange-600 dark:text-orange-400">↑ {formatBytes(currentIfaceObj?.tx_byte)}</strong></span>
           </div>
         </div>
 
@@ -784,13 +786,13 @@ export default function NocDashboard() {
             <div className="flex items-center justify-between mb-1">
               <div className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
                 <Globe size={16} className="text-sky-600 dark:text-sky-400" />
-                <span>Top 5 Web / Domain</span>
+                <span>{t.topDomainsTitle}</span>
               </div>
               <span className="text-[10px] font-semibold bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-300 px-2 py-0.5 rounded-full border border-sky-200 dark:border-sky-800">
-                DNS Cache
+                {t.dnsCacheBadge}
               </span>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Domain tujuan paling sering diakses oleh klien di jaringan</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">{t.topDomainsSubtitle}</p>
 
             {topDomains.length > 0 ? (
               <div className="space-y-3.5">
@@ -822,15 +824,15 @@ export default function NocDashboard() {
             ) : (
               <div className="flex flex-col items-center justify-center h-48 text-slate-400 dark:text-slate-500 text-xs">
                 <Globe size={32} className="mb-2 text-slate-300 dark:text-slate-600" />
-                <span>Belum ada query DNS tercatat</span>
-                <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Pastikan klien menggunakan DNS RouterOS</span>
+                <span>{t.noDnsQueries}</span>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{t.noDnsQueriesHelp}</span>
               </div>
             )}
           </div>
 
           <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-400 dark:text-slate-500 flex items-center justify-between">
-            <span>Metode: /ip dns cache</span>
-            <span>Update setiap 5 dtk</span>
+            <span>{t.dnsMethod}</span>
+            <span>{t.dnsUpdateFreq}</span>
           </div>
         </div>
       </div>
@@ -842,34 +844,34 @@ export default function NocDashboard() {
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
               <Users size={16} className="text-emerald-600 dark:text-emerald-400" />
-              <span>Top Bandwidth Consumers</span>
+              <span>{t.topTalkersTitle}</span>
             </div>
             <span className="text-xs text-slate-400 dark:text-slate-500">Hotspot & PPPoE</span>
           </div>
 
           {topTalkers.length > 0 ? (
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              {topTalkers.map((t, idx) => (
-                <div key={`${t.name}-${idx}`} className="py-2.5 flex items-center justify-between text-xs">
+              {topTalkers.map((tClient, idx) => (
+                <div key={`${tClient.name}-${idx}`} className="py-2.5 flex items-center justify-between text-xs">
                   <div className="flex items-center gap-3">
                     <span className="w-5 h-5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-bold flex items-center justify-center text-[10px] border border-emerald-200 dark:border-emerald-800">
                       {idx + 1}
                     </span>
                     <div>
-                      <div className="font-semibold text-slate-800 dark:text-slate-100">{t.name}</div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-100">{tClient.name}</div>
                       <div className="text-[10px] text-slate-400 dark:text-slate-500">
-                        {t.ip || '-'} · <span className="font-medium text-slate-500 dark:text-slate-400">{t.service}</span>
+                        {tClient.ip || '-'} · <span className="font-medium text-slate-500 dark:text-slate-400">{tClient.service}</span>
                       </div>
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="font-bold text-slate-800 dark:text-slate-100">
-                      {t.total_bytes ? formatBytes(t.total_bytes) : 'Active Session'}
+                      {tClient.total_bytes ? formatBytes(tClient.total_bytes) : t.activeSession}
                     </div>
-                    {t.bytes_in != null && t.bytes_out != null && (
+                    {tClient.bytes_in != null && tClient.bytes_out != null && (
                       <div className="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-1 justify-end">
-                        <span className="text-sky-500 dark:text-sky-400">↓ {formatBytes(t.bytes_in)}</span>
-                        <span className="text-orange-500 dark:text-orange-400">↑ {formatBytes(t.bytes_out)}</span>
+                        <span className="text-sky-500 dark:text-sky-400">↓ {formatBytes(tClient.bytes_in)}</span>
+                        <span className="text-orange-500 dark:text-orange-400">↑ {formatBytes(tClient.bytes_out)}</span>
                       </div>
                     )}
                   </div>
@@ -879,7 +881,7 @@ export default function NocDashboard() {
           ) : (
             <div className="flex flex-col items-center justify-center h-32 text-slate-400 dark:text-slate-500 text-xs">
               <Users size={28} className="mb-1 text-slate-300 dark:text-slate-600" />
-              <span>Belum ada klien aktif terdeteksi</span>
+              <span>{t.noActiveClients}</span>
             </div>
           )}
         </div>
@@ -889,9 +891,9 @@ export default function NocDashboard() {
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
               <AlertTriangle size={16} className="text-amber-500" />
-              <span>Link Error & Packet Drop Watchlist</span>
+              <span>{t.watchlistTitle}</span>
             </div>
-            <span className="text-xs text-slate-400 dark:text-slate-500">Kualitas Fisik Kabel / SFP</span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">{t.watchlistSubtitle}</span>
           </div>
 
           {mergedPorts.filter((p) => p.rx_drop > 0 || p.tx_drop > 0 || p.rx_error > 0 || p.tx_error > 0).length > 0 ? (
@@ -907,12 +909,12 @@ export default function NocDashboard() {
                     <div className="flex items-center gap-3">
                       {(p.rx_drop > 0 || p.tx_drop > 0) && (
                         <span className="text-amber-600 dark:text-amber-400 font-medium">
-                          Drops: {p.rx_drop + p.tx_drop}
+                          {t.portDrops}: {p.rx_drop + p.tx_drop}
                         </span>
                       )}
                       {(p.rx_error > 0 || p.tx_error > 0) && (
                         <span className="text-rose-600 dark:text-rose-400 font-medium">
-                          Errors: {p.rx_error + p.tx_error}
+                          {t.portErrors}: {p.rx_error + p.tx_error}
                         </span>
                       )}
                     </div>
@@ -922,8 +924,8 @@ export default function NocDashboard() {
           ) : (
             <div className="flex flex-col items-center justify-center h-32 text-emerald-600 dark:text-emerald-400 text-xs">
               <CheckCircle2 size={32} className="mb-2 text-emerald-500" />
-              <span className="font-semibold text-slate-700 dark:text-slate-300">Semua Link Interface Bersih</span>
-              <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">0 packet drop & 0 CRC error pada semua port</span>
+              <span className="font-semibold text-slate-700 dark:text-slate-300">{t.allLinksHealthy}</span>
+              <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{t.allLinksHealthyDesc}</span>
             </div>
           )}
         </div>
@@ -935,17 +937,22 @@ export default function NocDashboard() {
           <div>
             <div className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
               <ScrollText size={16} className="text-rose-600 dark:text-rose-400" />
-              <span>Live Incident & System Log Stream</span>
-              <span className="text-xs font-normal text-slate-400 dark:text-slate-500">({filteredLogs.length} events)</span>
+              <span>{t.incidentLogsTitle}</span>
+              <span className="text-xs font-normal text-slate-400 dark:text-slate-500">({filteredLogs.length} {t.eventsCount})</span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Umpan log RouterOS real-time khusus insiden kritis, error, dan peringatan sistem
+              {t.incidentLogsSubtitle}
             </p>
           </div>
 
           {/* Filter Pills */}
           <div className="flex items-center gap-1.5 text-xs bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-            {['all', 'critical', 'error', 'warning'].map((f) => (
+            {[
+              { id: 'all', label: t.severityAll },
+              { id: 'critical', label: t.severityCritical },
+              { id: 'error', label: t.severityError },
+              { id: 'warning', label: t.severityWarning },
+            ].map(({ id: f, label }) => (
               <button
                 key={f}
                 onClick={() => setLogFilter(f)}
@@ -961,7 +968,7 @@ export default function NocDashboard() {
                     : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
               >
-                {f}
+                {label}
               </button>
             ))}
           </div>
@@ -969,33 +976,33 @@ export default function NocDashboard() {
 
         {filteredLogs.length > 0 ? (
           <div className="overflow-x-auto">
-            <div className="divide-y divide-slate-100 font-mono text-xs max-h-72 overflow-y-auto">
+            <div className="divide-y divide-slate-100 dark:divide-slate-800 font-mono text-xs max-h-72 overflow-y-auto">
               {filteredLogs.map((log, idx) => {
                 const isCrit = log.severity === 'critical'
                 const isErr = log.severity === 'error'
                 return (
                   <div
                     key={`${log.time}-${idx}`}
-                    className="py-2.5 px-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-slate-50 transition rounded-lg"
+                    className="py-2.5 px-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition rounded-lg"
                   >
                     <div className="flex items-center gap-2.5">
-                      <span className="text-slate-400 text-[11px] whitespace-nowrap">{log.time}</span>
+                      <span className="text-slate-400 dark:text-slate-500 text-[11px] whitespace-nowrap">{log.time}</span>
                       <span
                         className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                           isCrit
-                            ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                            ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/60'
                             : isErr
-                            ? 'bg-red-100 text-red-700 border border-red-200'
-                            : 'bg-amber-100 text-amber-700 border border-amber-200'
+                            ? 'bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900/60'
+                            : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60'
                         }`}
                       >
                         {log.severity}
                       </span>
-                      <span className="text-slate-400 text-[10px] px-1.5 py-0.5 bg-slate-100 rounded">
+                      <span className="text-slate-400 dark:text-slate-500 text-[10px] px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded">
                         {log.topics}
                       </span>
                     </div>
-                    <div className="text-slate-800 font-sans text-xs flex-1 sm:text-right truncate sm:ml-4" title={log.message}>
+                    <div className="text-slate-800 dark:text-slate-200 font-sans text-xs flex-1 sm:text-right truncate sm:ml-4" title={log.message}>
                       {log.message}
                     </div>
                   </div>
@@ -1004,10 +1011,10 @@ export default function NocDashboard() {
             </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center h-28 text-slate-400 text-xs">
+          <div className="flex flex-col items-center justify-center h-28 text-slate-400 dark:text-slate-500 text-xs">
             <CheckCircle2 size={28} className="mb-1 text-emerald-500" />
-            <span className="font-semibold text-slate-700">Tidak Ada Insiden Tercatat</span>
-            <span className="text-[10px] text-slate-400">Router berjalan bersih tanpa warning atau error aktif</span>
+            <span className="font-semibold text-slate-700 dark:text-slate-300">{t.noIncidentsTitle}</span>
+            <span className="text-[10px] text-slate-400 dark:text-slate-500">{t.noIncidentsDesc}</span>
           </div>
         )}
       </div>
@@ -1020,7 +1027,7 @@ export default function NocDashboard() {
             className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-sm w-full p-5 border border-slate-200 dark:border-slate-800"
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="font-bold text-base text-slate-800 dark:text-white">Atur Kapasitas Bandwidth ISP</h3>
+              <h3 className="font-bold text-base text-slate-800 dark:text-white">{t.capacityModalTitle}</h3>
               <button
                 type="button"
                 onClick={() => setShowCapModal(false)}
@@ -1033,7 +1040,7 @@ export default function NocDashboard() {
             <div className="mt-4 space-y-3">
               <div>
                 <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1 block">
-                  Kapasitas Langganan (Mbps)
+                  {t.subscriptionCapacity}
                 </label>
                 <input
                   type="number"
@@ -1042,12 +1049,12 @@ export default function NocDashboard() {
                   value={capInput}
                   onChange={(e) => setCapInput(e.target.value)}
                   className="w-full border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl px-3 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
-                  placeholder="Contoh: 500"
+                  placeholder={t.capacityPlaceholder}
                   required
                 />
               </div>
               <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                Dashboard akan memicu alarm dan banner saturasi jika throughput interface melebihi 85% dari batas ini.
+                {t.capacityModalHelp}
               </p>
             </div>
 
@@ -1057,13 +1064,13 @@ export default function NocDashboard() {
                 onClick={() => setShowCapModal(false)}
                 className="px-3.5 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
               >
-                Batal
+                {t.btnBatal}
               </button>
               <button
                 type="submit"
                 className="px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold rounded-xl transition shadow"
               >
-                Simpan
+                {t.btnSimpan}
               </button>
             </div>
           </form>
@@ -1082,6 +1089,7 @@ export default function NocDashboard() {
 }
 
 function PortDetailModal({ port, onClose }) {
+  const { t } = useLanguage()
   const { last: liveTraffic } = useTrafficWS(port.name)
   const rx = liveTraffic?.rx_bps > 0 ? liveTraffic.rx_bps : (port.rx_bps || 0)
   const tx = liveTraffic?.tx_bps > 0 ? liveTraffic.tx_bps : (port.tx_bps || 0)
@@ -1111,21 +1119,21 @@ function PortDetailModal({ port, onClose }) {
 
         <div className="mt-4 space-y-2.5 text-xs">
           <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800">
-            <span className="text-slate-400 dark:text-slate-500">Link Status</span>
+            <span className="text-slate-400 dark:text-slate-500">{t.linkStatus}</span>
             <span className={`font-semibold ${port.running ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-              {port.running ? 'LINK UP (Running)' : 'LINK DOWN'}
+              {port.running ? t.linkRunning : t.linkDisconnected}
             </span>
           </div>
           <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800">
-            <span className="text-slate-400 dark:text-slate-500">Negotiated Speed</span>
+            <span className="text-slate-400 dark:text-slate-500">{t.negotiatedSpeed}</span>
             <span className="font-semibold text-slate-700 dark:text-slate-200">{port.speed || '1 Gbps (Full Duplex)'}</span>
           </div>
           <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800">
-            <span className="text-slate-400 dark:text-slate-500">MAC Address</span>
+            <span className="text-slate-400 dark:text-slate-500">{t.macAddress}</span>
             <span className="font-mono text-slate-700 dark:text-slate-200">{port.mac_address || '-'}</span>
           </div>
           <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800 items-center">
-            <span className="text-slate-400 dark:text-slate-500">Current Live Traffic</span>
+            <span className="text-slate-400 dark:text-slate-500">{t.currentLiveTraffic}</span>
             <div className="flex items-center gap-3 font-semibold text-slate-700 dark:text-slate-200">
               <span className="text-sky-600 flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-sky-500 animate-ping" />
@@ -1138,19 +1146,19 @@ function PortDetailModal({ port, onClose }) {
             </div>
           </div>
           <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800">
-            <span className="text-slate-400 dark:text-slate-500">Total Cumulative RX/TX</span>
+            <span className="text-slate-400 dark:text-slate-500">{t.cumulativeRxTx}</span>
             <span className="text-slate-700 dark:text-slate-200 font-medium">
               ↓ {formatBytes(port.rx_byte)} / ↑ {formatBytes(port.tx_byte)}
             </span>
           </div>
           <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800">
-            <span className="text-slate-400 dark:text-slate-500">Packet Drops</span>
+            <span className="text-slate-400 dark:text-slate-500">{t.packetDrops}</span>
             <span className={`font-semibold ${port.rx_drop > 0 || port.tx_drop > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-700 dark:text-slate-200'}`}>
               RX: {port.rx_drop} · TX: {port.tx_drop}
             </span>
           </div>
           <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800">
-            <span className="text-slate-400 dark:text-slate-500">Packet Errors</span>
+            <span className="text-slate-400 dark:text-slate-500">{t.packetErrors}</span>
             <span className={`font-semibold ${port.rx_error > 0 || port.tx_error > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-slate-200'}`}>
               RX: {port.rx_error} · TX: {port.tx_error}
             </span>
@@ -1162,7 +1170,7 @@ function PortDetailModal({ port, onClose }) {
             onClick={onClose}
             className="px-4 py-1.5 bg-slate-900 dark:bg-slate-700 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 dark:hover:bg-slate-600 transition"
           >
-            Tutup
+            {t.btnTutup}
           </button>
         </div>
       </div>

@@ -18,28 +18,30 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useRouter } from '../context/RouterContext'
-
-const monitorItems = [
-  { to: '/noc', label: 'NOC Dashboard', icon: Radio },
-  { to: '/device', label: 'Device Monitor', icon: Cpu },
-  { to: '/interfaces', label: 'Interface Traffic', icon: Activity },
-  { to: '/pppoe', label: 'PPPoE Monitor', icon: Users },
-  { to: '/hotspot', label: 'Hotspot Monitor', icon: Wifi },
-  { to: '/topology', label: 'Network Topology', icon: Network },
-]
-
-const settingsItems = [
-  { to: '/config', label: 'Konfigurasi', icon: Settings },
-]
-
-const adminItems = [
-  { to: '/admin/logs', label: 'Audit Logs', icon: ScrollText },
-]
+import { useLanguage } from '../context/LanguageContext'
 
 export default function Sidebar({ onNavigate, isCollapsed = false, onToggleCollapse }) {
   const { user, logout } = useAuth()
   const { routers, activeRouterId, activeRouter, setActiveRouterId } = useRouter()
+  const { t, language } = useLanguage()
   const navigate = useNavigate()
+
+  const monitorItems = [
+    { to: '/noc', label: t.navNoc, icon: Radio },
+    { to: '/device', label: t.navDashboard, icon: Cpu },
+    { to: '/interfaces', label: t.navTraffic, icon: Activity },
+    { to: '/pppoe', label: t.navPppoe, icon: Users },
+    { to: '/hotspot', label: t.navHotspot, icon: Wifi },
+    { to: '/topology', label: t.navTopology, icon: Network },
+  ]
+
+  const settingsItems = [
+    { to: '/config', label: t.navConfig, icon: Settings },
+  ]
+
+  const adminItems = [
+    { to: '/admin/logs', label: t.navLogs, icon: ScrollText },
+  ]
 
   const handleLogout = () => {
     logout()
@@ -68,14 +70,14 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
             <button
               onClick={onToggleCollapse}
               className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-purple to-indigo-600 flex items-center justify-center font-bold text-white text-base shadow-sm hover:opacity-90 transition"
-              title="MIMO.SA - Klik untuk buka menu"
+              title={language === 'en' ? 'MIMO.SA - Click to open menu' : 'MIMO.SA - Klik untuk buka menu'}
             >
               M
             </button>
             <button
               onClick={onToggleCollapse}
               className="p-1.5 rounded-lg text-slate-400 hover:text-brand-purple hover:bg-slate-100 dark:hover:bg-slate-800 transition hidden lg:flex"
-              title="Buka Sidebar (Perluas)"
+              title={language === 'en' ? 'Open Sidebar (Expand)' : 'Buka Sidebar (Perluas)'}
             >
               <PanelLeftOpen size={17} />
             </button>
@@ -86,12 +88,12 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
               <div className="text-xl font-bold tracking-tight text-slate-800 dark:text-white whitespace-nowrap">
                 MIMO<span className="text-brand-purple">.SA</span>
               </div>
-              <div className="text-[11px] text-slate-400 dark:text-slate-500 whitespace-nowrap">Monitoring MikroTik System</div>
+              <div className="text-[11px] text-slate-400 dark:text-slate-500 whitespace-nowrap">{t.appSubtitle}</div>
             </div>
             <button
               onClick={onToggleCollapse}
               className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition hidden lg:flex"
-              title="Tutup / Perkecil Sidebar"
+              title={language === 'en' ? 'Collapse Sidebar' : 'Tutup / Perkecil Sidebar'}
             >
               <PanelLeftClose size={18} />
             </button>
@@ -107,8 +109,8 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
               <button
                 onClick={handleCycleRouter}
                 className="w-10 h-10 rounded-xl bg-gradient-to-r from-brand-purple/10 to-indigo-50 dark:from-brand-purple/20 dark:to-indigo-950/40 border border-brand-purple/20 dark:border-brand-purple/30 flex items-center justify-center text-brand-purple hover:bg-brand-purple/20 transition relative group"
-                title={`Router Aktif: ${activeRouter?.name || 'Router'} (${activeRouter?.host || ''})${
-                  routers.length > 1 ? ' - Klik untuk ganti' : ''
+                title={`${language === 'en' ? 'Active Router' : 'Router Aktif'}: ${activeRouter?.name || 'Router'} (${activeRouter?.host || ''})${
+                  routers.length > 1 ? (language === 'en' ? ' - Click to switch' : ' - Klik untuk ganti') : ''
                 }`}
               >
                 <Router size={18} />
@@ -126,7 +128,7 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
           ) : (
             <div className="px-1">
               <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1 mb-1.5 font-semibold">
-                Router Aktif
+                {t.activeRouter}
               </div>
               <div className="relative">
                 <select
@@ -163,13 +165,13 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
           <NavLink
             to="/config"
             onClick={onNavigate}
-            title="Tambah Router"
+            title={language === 'en' ? 'Add Router' : 'Tambah Router'}
             className={`flex items-center justify-center rounded-xl bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition ${
               isCollapsed ? 'w-10 h-10 mx-auto' : 'gap-2 px-3 py-2 text-sm'
             }`}
           >
             <Router size={16} />
-            {!isCollapsed && <span>Tambah Router</span>}
+            {!isCollapsed && <span>{language === 'en' ? 'Add Router' : 'Tambah Router'}</span>}
           </NavLink>
         </div>
       )}
@@ -177,7 +179,7 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
       {/* ── Section: Monitoring ── */}
       {!isCollapsed ? (
         <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 px-2 mb-2 font-semibold">
-          Monitoring
+          {language === 'en' ? 'Monitoring' : 'Pemantauan'}
         </div>
       ) : (
         <div className="my-2 border-t border-slate-100 dark:border-slate-800 mx-2" />
@@ -220,7 +222,7 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
       {/* ── Section: Settings ── */}
       {!isCollapsed ? (
         <div className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 px-2 mt-5 mb-2 font-semibold">
-          Settings
+          {language === 'en' ? 'Settings' : 'Pengaturan'}
         </div>
       ) : (
         <div className="my-2 border-t border-slate-100 dark:border-slate-800 mx-2" />
@@ -322,7 +324,7 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
             <button
               onClick={handleLogout}
               className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
-              title="Logout"
+              title={t.logout}
             >
               <LogOut size={16} />
             </button>
@@ -338,7 +340,7 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
             <button
               onClick={handleLogout}
               className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
-              title="Logout"
+              title={t.logout}
             >
               <LogOut size={16} />
             </button>

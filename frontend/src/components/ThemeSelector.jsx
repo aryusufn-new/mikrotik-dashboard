@@ -1,17 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Sun, Moon, Monitor, Check } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
+import { useLanguage } from '../context/LanguageContext'
 
 export default function ThemeSelector({ showLanguage = true }) {
   const { theme, resolvedTheme, setTheme } = useTheme()
+  const { language, setLanguage, t } = useLanguage()
   const [isOpen, setIsOpen] = useState(false)
-  const [language, setLanguage] = useState(() => {
-    try {
-      return localStorage.getItem('language') || 'ID'
-    } catch {
-      return 'ID'
-    }
-  })
   const [langOpen, setLangOpen] = useState(false)
 
   const dropdownRef = useRef(null)
@@ -38,9 +33,6 @@ export default function ThemeSelector({ showLanguage = true }) {
 
   const handleSelectLang = (code) => {
     setLanguage(code)
-    try {
-      localStorage.setItem('language', code)
-    } catch {}
     setLangOpen(false)
   }
 
@@ -55,6 +47,9 @@ export default function ThemeSelector({ showLanguage = true }) {
     return <Sun size={18} className="text-slate-700 dark:text-slate-200" />
   }
 
+  const activeThemeLabel =
+    theme === 'light' ? t.temaTerang : theme === 'dark' ? t.temaGelap : t.temaSistem
+
   return (
     <div className="flex items-center gap-2">
       {/* Language Switcher Badge */}
@@ -67,12 +62,12 @@ export default function ThemeSelector({ showLanguage = true }) {
               setIsOpen(false)
             }}
             className="h-9 px-2.5 flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/80 transition-all text-xs font-semibold shadow-xs"
-            title="Pilih Bahasa"
+            title={t.pilihBahasa}
           >
             <span className="text-sm leading-none" role="img" aria-label="flag">
-              {language === 'ID' ? '🇮🇩' : '🇬🇧'}
+              {language === 'en' ? '🇬🇧' : '🇮🇩'}
             </span>
-            <span>{language}</span>
+            <span>{language.toUpperCase()}</span>
           </button>
 
           {/* Language Dropdown */}
@@ -80,9 +75,9 @@ export default function ThemeSelector({ showLanguage = true }) {
             <div className="absolute right-0 mt-1.5 w-28 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg p-1 z-50 text-xs">
               <button
                 type="button"
-                onClick={() => handleSelectLang('ID')}
+                onClick={() => handleSelectLang('id')}
                 className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition ${
-                  language === 'ID'
+                  language === 'id'
                     ? 'bg-slate-100 dark:bg-slate-700/70 font-semibold text-slate-900 dark:text-white'
                     : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'
                 }`}
@@ -91,13 +86,13 @@ export default function ThemeSelector({ showLanguage = true }) {
                   <span>🇮🇩</span>
                   <span>ID</span>
                 </span>
-                {language === 'ID' && <Check size={13} className="text-brand-purple" />}
+                {language === 'id' && <Check size={13} className="text-brand-purple" />}
               </button>
               <button
                 type="button"
-                onClick={() => handleSelectLang('EN')}
+                onClick={() => handleSelectLang('en')}
                 className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition ${
-                  language === 'EN'
+                  language === 'en'
                     ? 'bg-slate-100 dark:bg-slate-700/70 font-semibold text-slate-900 dark:text-white'
                     : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'
                 }`}
@@ -106,7 +101,7 @@ export default function ThemeSelector({ showLanguage = true }) {
                   <span>🇬🇧</span>
                   <span>EN</span>
                 </span>
-                {language === 'EN' && <Check size={13} className="text-brand-purple" />}
+                {language === 'en' && <Check size={13} className="text-brand-purple" />}
               </button>
             </div>
           )}
@@ -123,7 +118,7 @@ export default function ThemeSelector({ showLanguage = true }) {
           }}
           className="w-9 h-9 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 transition-all shadow-xs"
           aria-label="Toggle Theme"
-          title={`Tema: ${theme.charAt(0).toUpperCase() + theme.slice(1)}`}
+          title={`${t.tema}: ${activeThemeLabel}`}
         >
           {renderTriggerIcon()}
         </button>
@@ -140,7 +135,7 @@ export default function ThemeSelector({ showLanguage = true }) {
                   : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50'
               }`}
             >
-              <span>Light</span>
+              <span>{t.temaTerang}</span>
               {theme === 'light' && <Check size={14} className="text-brand-purple" />}
             </button>
 
@@ -153,7 +148,7 @@ export default function ThemeSelector({ showLanguage = true }) {
                   : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50'
               }`}
             >
-              <span>Dark</span>
+              <span>{t.temaGelap}</span>
               {theme === 'dark' && <Check size={14} className="text-brand-purple" />}
             </button>
 
@@ -166,7 +161,7 @@ export default function ThemeSelector({ showLanguage = true }) {
                   : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50'
               }`}
             >
-              <span>System</span>
+              <span>{t.temaSistem}</span>
               {theme === 'system' && <Check size={14} className="text-brand-purple" />}
             </button>
           </div>

@@ -142,6 +142,7 @@ mikrotik-dashboard/
   - [x] Implementasi 5 fitur inti NOC Dashboard
   - [x] Auto-deploy dan verifikasi di server VM
   - [x] Implementasi sistem tema (Light, Dark, System) & header dropdown
+  - [x] Internasionalisasi / i18n konsisten 100% Bahasa Indonesia & 100% English via LanguageContext
   - [x] Deploy dev branch dan verifikasi container
   - [ ] Pengujian langsung performa real-time dan feedback audio alarm di browser operator
   - [ ] Persiapan pull request / merge `dev` ke `main`

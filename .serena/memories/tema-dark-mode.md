@@ -110,3 +110,30 @@ export default function MyComponent() {
 ### C. Penjelasan & Penerjemahan Istilah "Kiosk Mode"
 - **Arti Kiosk Mode**: Dalam dunia IT / NOC, *Kiosk Mode* merujuk pada mode tampilan penuh layar (Fullscreen) yang menonaktifkan/menyembunyikan navigasi browser dan header OS, sehingga dashboard dapat dipajang mandiri 24/7 di monitor NOC atau TV dinding (*wall display*).
 - **Label Tombol**: Diperbarui menjadi **"Layar Penuh"** (saat normal) dan **"Keluar Layar Penuh"** (saat fullscreen aktif), dengan tooltip: `"Mode Kiosk / Tampilan Layar Penuh (NOC TV Wall)"`.
+
+---
+
+## 7. Standardisasi Bahasa Konsisten (100% ID & 100% EN)
+
+### A. Masalah Sebelumnya
+- Terdapat percampuran bahasa secara acak di UI (contoh: "PORT MATRIX & PHYSICAL LINK (29 INTERFACES DETECTED)" bercampur dengan "Sesuaikan Kapasitas", "Layar Penuh", "19 Up", "5 Down").
+- Tombol pemilih bahasa `[ 🇮🇩 ID ]` / `[ 🇬🇧 EN ]` di header sebelumnya hanya mengubah state lokal tanpa menyinkronkan seluruh teks aplikasi.
+
+### B. Solusi
+1. **Centralized LanguageContext (`frontend/src/context/LanguageContext.jsx`)**:
+   - Menyediakan kamus terjemahan lengkap (`translations.id` dan `translations.en`).
+   - Menyimpan preferensi bahasa operator di `localStorage.getItem('language')`.
+   - Mengontrol bahasa aplikasi secara terpusat dengan hook `useLanguage()`.
+2. **Cakupan Terjemahan**:
+   - **Header & Sidebar**: Judul aplikasi, menu navigasi, pemilihan router, status role, tooltip, dan tombol logout.
+   - **NOC Header**: Telemetri langsung, status uplink, uptime, alarm audio, layar penuh / keluar layar penuh.
+   - **Row 1 Hardware**: Beban CPU, RAM, tabel Conntrack, sewa IP DHCP, suhu sistem, penyimpanan disk.
+   - **Row 2 Port Matrix**: Matriks port, jumlah antarmuka terdeteksi, status Aktif/Mati, paket dibuang, dan galat paket.
+   - **Row 3 Throughput & DNS**: Throughput antarmuka RX/TX, tooltip grafik, domain teratas, metode cache DNS.
+   - **Row 4 Talkers & Watchlist**: Konsumen bandwidth teratas, pengawasan galat fisik, kondisi tautan bersih.
+   - **Row 5 Incident Stream**: Aliran insiden sistem, filter tingkat keparahan (Semua, Kritis, Galat, Peringatan), dan status tanpa insiden.
+   - **Modals**: Modal pengaturan kapasitas ISP dan Modal inspeksi port (PortDetailModal).
+3. **Kaidah Istilah**:
+   - Jika mode **ID (Bahasa Indonesia)** aktif: 100% kosakata menggunakan Bahasa Indonesia baku jaringan.
+   - Jika mode **EN (English)** aktif: 100% kosakata menggunakan Bahasa Inggris murni.
+   - Istilah teknis RouterOS (seperti nama interface `ether1`, `sfp1`, `bps`, `Mbps`, `PPPoE`, `DHCP`, `DNS`, alamat IP & MAC) tetap presisi sesuai spesifikasi teknis jaringan.
