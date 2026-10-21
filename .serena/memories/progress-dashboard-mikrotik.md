@@ -58,6 +58,7 @@
 ### 4. File yang Diubah (Commit Terakhir di dev)
 | Commit | Pesan | Deskripsi |
 |--------|-------|-----------|
+| `da90eb0` | `feat(theme): add dark, light, and system theme switcher with auto-sync and memories` | Sistem tema (Light, Dark, System), navbar theme selector, bahasa, dan dark mode semua halaman |
 | `a2f42f6` | `feat(layout): add collapsible desktop sidebar with icon-only mode and persistent state` | Sidebar collapsible (toggle buka/tutup, mode icon-only 64px, tooltip, auto-persist) |
 | `834d749` | `feat(noc): add incident logs, multi-ping matrix, conntrack meters, saturation alert, and audio alarm` | Implementasi 5 fitur NOC utama di backend & frontend |
 | `b188506` | `feat(noc): add interface selector dropdown for single-interface throughput chart` | Dropdown filter interface tunggal pada grafik throughput |
@@ -130,11 +131,16 @@ mikrotik-dashboard/
 └── README.md
 ```
 
-## Status Saat Ini (20 Oktober 2026)
-- **Branch**: `dev` sudah sync dengan remote `origin dev`.
-- **Deployment**: Pipeline GitHub Actions dev sukses ter-deploy (`success`) di VM dev.
+## Status Saat Ini (21 Oktober 2026)
+- **Branch**: `dev` sudah sync dengan remote `origin dev` (commit `da90eb0`).
+- **Deployment**: Pipeline GitHub Actions dev sukses ter-deploy (`success`) di VM dev:
+  - Container `mikrotik-dev-backend`: Up
+  - Container `mikrotik-dev-frontend`: Up (port 8080)
+  - Container `mikrotik-admin-frontend`: Up (port 8081)
 - **Next Steps**:
   - [x] Implementasi 5 fitur inti NOC Dashboard
   - [x] Auto-deploy dan verifikasi di server VM
+  - [x] Implementasi sistem tema (Light, Dark, System) & header dropdown
+  - [x] Deploy dev branch dan verifikasi container
   - [ ] Pengujian langsung performa real-time dan feedback audio alarm di browser operator
   - [ ] Persiapan pull request / merge `dev` ke `main`
