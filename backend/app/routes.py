@@ -6,6 +6,7 @@ from typing import Optional
 from . import mikrotik
 from . import config as cfg_mod
 from . import database as db
+from . import olt_service
 from .auth import create_access_token, get_current_user, require_admin
 
 router = APIRouter(prefix="/api")
@@ -416,5 +417,327 @@ def noc_multi_ping(user: dict = Depends(get_current_user), router_id: int | None
 def noc_dhcp_conntrack(user: dict = Depends(get_current_user), router_id: int | None = Depends(_get_router_id)):
     """DHCP IP pool and firewall connection tracking telemetry."""
     return _safe(mikrotik.get_dhcp_and_conntrack, user["id"], router_id)
+
+
+# ── OLT & Customer FTTH Monitoring ────────────────────────
+
+class OltCreate(BaseModel):
+    name: str
+    brand: str = "vsol"
+    host: str = "192.168.1.100"
+    snmp_port: int = 161
+    snmp_community: str = "public"
+    telnet_port: int = 23
+    telnet_user: str = "admin"
+    telnet_pass: str = "admin"
+    pon_ports_count: int = 8
+    description: str = ""
+
+
+class OltUpdate(BaseModel):
+    name: Optional[str] = None
+    brand: Optional[str] = None
+    host: Optional[str] = None
+    snmp_port: Optional[int] = None
+    snmp_community: Optional[str] = None
+    telnet_port: Optional[int] = None
+    telnet_user: Optional[str] = None
+    telnet_pass: Optional[str] = None
+    pon_ports_count: Optional[int] = None
+    description: Optional[str] = None
+
+
+class CustomerCreate(BaseModel):
+    name: str
+    phone: str = ""
+    address: str = ""
+    odp_name: str = ""
+    pppoe_username: str = ""
+    router_id: Optional[int] = None
+    olt_id: Optional[int] = None
+    pon_port: str = "PON 1"
+    onu_id: int = 1
+    onu_sn: str = ""
+    onu_model: str = "V2801SG"
+    package_name: str = "20 Mbps"
+    status: str = "active"
+
+
+class CustomerUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    odp_name: Optional[str] = None
+    pppoe_username: Optional[str] = None
+    router_id: Optional[int] = None
+    olt_id: Optional[int] = None
+    pon_port: Optional[str] = None
+    onu_id: Optional[int] = None
+    onu_sn: Optional[str] = None
+    onu_model: Optional[str] = None
+    package_name: Optional[str] = None
+    status: Optional[str] = None
+
+
+@router.get("/olts")
+def get_olts(user: dict = Depends(get_current_user)):
+    return db.list_olts(user["id"])
+
+
+@router.post("/olts")
+def create_olt(body: OltCreate, user: dict = Depends(get_current_user)):
+    olt_id = db.add_olt(
+        user_id=user["id"],
+        name=body.name,
+        brand=body.brand,
+        host=body.host,
+        snmp_port=body.snmp_port,
+        snmp_community=body.snmp_community,
+        telnet_port=body.telnet_port,
+        telnet_user=body.telnet_user,
+        telnet_pass=body.telnet_pass,
+        pon_ports_count=body.pon_ports_count,
+        description=body.description,
+    )
+    return db.get_olt(olt_id, user["id"])
+
+
+@router.get("/olts/{olt_id}")
+def get_single_olt(olt_id: int, user: dict = Depends(get_current_user)):
+    olt = db.get_olt(olt_id, user["id"])
+    if not olt:
+        raise HTTPException(status_code=404, detail="OLT tidak ditemukan")
+    return olt
+
+
+@router.put("/olts/{olt_id}")
+def update_single_olt(olt_id: int, body: OltUpdate, user: dict = Depends(get_current_user)):
+    ok = db.update_olt(olt_id, user["id"], **body.model_dump(exclude_unset=True))
+    if not ok:
+        raise HTTPException(status_code=404, detail="OLT tidak ditemukan")
+    return db.get_olt(olt_id, user["id"])
+
+
+@router.delete("/olts/{olt_id}")
+def delete_single_olt(olt_id: int, user: dict = Depends(get_current_user)):
+    ok = db.delete_olt(olt_id, user["id"])
+    if not ok:
+        raise HTTPException(status_code=404, detail="OLT tidak ditemukan")
+    return {"message": "OLT berhasil dihapus"}
+
+
+@router.post("/olts/{olt_id}/test")
+def test_olt(olt_id: int, user: dict = Depends(get_current_user)):
+    olt = db.get_olt(olt_id, user["id"])
+    if not olt:
+        raise HTTPException(status_code=404, detail="OLT tidak ditemukan")
+    return olt_service.test_olt_connection(
+        host=olt["host"],
+        telnet_port=olt["telnet_port"],
+        snmp_port=olt["snmp_port"],
+    )
+
+
+@router.get("/olts/{olt_id}/scan")
+def scan_onus(olt_id: int, user: dict = Depends(get_current_user)):
+    olt = db.get_olt(olt_id, user["id"])
+    if not olt:
+        raise HTTPException(status_code=404, detail="OLT tidak ditemukan")
+    return olt_service.scan_olt_onus(olt)
+
+
+# ── Customer FTTH Endpoints ────────────────────────────────
+
+@router.get("/customers/stats")
+def customer_stats(user: dict = Depends(get_current_user)):
+    return db.get_customer_stats(user["id"])
+
+
+@router.get("/customers")
+def get_customers(
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    olt_id: Optional[int] = None,
+    router_id: Optional[int] = Depends(_get_router_id),
+    user: dict = Depends(get_current_user),
+):
+    customers = db.list_customers(
+        user_id=user["id"],
+        router_id=router_id,
+        olt_id=olt_id,
+        search=search,
+        status_filter=status,
+    )
+
+    # Attach live PPPoE session active status if router is available
+    try:
+        active_sessions = mikrotik.ppp_active_list(user["id"], router_id)
+        active_map = {s.get("name"): s for s in active_sessions if s.get("name")}
+        for c in customers:
+            u = c.get("pppoe_username")
+            if u and u in active_map:
+                sess = active_map[u]
+                c["is_pppoe_online"] = True
+                c["pppoe_ip"] = sess.get("address")
+                c["pppoe_uptime"] = sess.get("uptime")
+                c["caller_id"] = sess.get("caller_id")
+            else:
+                c["is_pppoe_online"] = False
+                c["pppoe_ip"] = None
+                c["pppoe_uptime"] = None
+                c["caller_id"] = None
+    except Exception:
+        for c in customers:
+            c["is_pppoe_online"] = False
+            c["pppoe_ip"] = None
+            c["pppoe_uptime"] = None
+            c["caller_id"] = None
+
+    return customers
+
+
+@router.post("/customers")
+def create_customer(body: CustomerCreate, user: dict = Depends(get_current_user)):
+    cid = db.add_customer(user["id"], **body.model_dump())
+    cust = db.get_customer(cid, user["id"])
+    if cust and cust.get("olt_id"):
+        olt = db.get_olt(cust["olt_id"], user["id"])
+        if olt:
+            opt = olt_service.fetch_onu_optical(
+                olt=olt,
+                pon_port=cust.get("pon_port") or "PON 1",
+                onu_id=cust.get("onu_id") or 1,
+                onu_sn=cust.get("onu_sn") or "",
+            )
+            db.update_customer_optical(
+                customer_id=cid,
+                user_id=user["id"],
+                rx_power=opt["rx_power"],
+                tx_power=opt["tx_power"],
+                olt_rx=opt["olt_rx"],
+                distance=opt["distance_km"],
+                status=opt["status"],
+            )
+    return db.get_customer(cid, user["id"])
+
+
+@router.get("/customers/{customer_id}")
+def get_single_customer(customer_id: int, user: dict = Depends(get_current_user)):
+    c = db.get_customer(customer_id, user["id"])
+    if not c:
+        raise HTTPException(status_code=404, detail="Pelanggan tidak ditemukan")
+    return c
+
+
+@router.put("/customers/{customer_id}")
+def update_single_customer(customer_id: int, body: CustomerUpdate, user: dict = Depends(get_current_user)):
+    ok = db.update_customer(customer_id, user["id"], **body.model_dump(exclude_unset=True))
+    if not ok:
+        raise HTTPException(status_code=404, detail="Pelanggan tidak ditemukan")
+    return db.get_customer(customer_id, user["id"])
+
+
+@router.delete("/customers/{customer_id}")
+def delete_single_customer(customer_id: int, user: dict = Depends(get_current_user)):
+    ok = db.delete_customer(customer_id, user["id"])
+    if not ok:
+        raise HTTPException(status_code=404, detail="Pelanggan tidak ditemukan")
+    return {"message": "Pelanggan berhasil dihapus"}
+
+
+@router.post("/customers/{customer_id}/optical")
+def check_single_optical(customer_id: int, user: dict = Depends(get_current_user)):
+    cust = db.get_customer(customer_id, user["id"])
+    if not cust:
+        raise HTTPException(status_code=404, detail="Pelanggan tidak ditemukan")
+
+    olt = db.get_olt(cust["olt_id"], user["id"]) if cust.get("olt_id") else None
+    if not olt:
+        olt = {"name": "Default OLT", "brand": "vsol", "host": "192.168.1.1"}
+
+    opt = olt_service.fetch_onu_optical(
+        olt=olt,
+        pon_port=cust.get("pon_port") or "PON 1",
+        onu_id=cust.get("onu_id") or 1,
+        onu_sn=cust.get("onu_sn") or "",
+        current_rx=float(cust["last_rx_power"]) if cust.get("last_rx_power") is not None else None,
+    )
+
+    db.update_customer_optical(
+        customer_id=customer_id,
+        user_id=user["id"],
+        rx_power=opt["rx_power"],
+        tx_power=opt["tx_power"],
+        olt_rx=opt["olt_rx"],
+        distance=opt["distance_km"],
+        status=opt["status"],
+    )
+
+    return opt
+
+
+@router.post("/customers/check-optical-all")
+def check_all_optical(
+    olt_id: Optional[int] = None,
+    router_id: Optional[int] = Depends(_get_router_id),
+    user: dict = Depends(get_current_user),
+):
+    customers = db.list_customers(user_id=user["id"], router_id=router_id, olt_id=olt_id)
+    olts = {o["id"]: o for o in db.list_olts(user["id"])}
+    default_olt = {"name": "Default OLT", "brand": "vsol", "host": "192.168.1.1"}
+
+    results = []
+    for c in customers:
+        olt = olts.get(c.get("olt_id")) or default_olt
+        opt = olt_service.fetch_onu_optical(
+            olt=olt,
+            pon_port=c.get("pon_port") or "PON 1",
+            onu_id=c.get("onu_id") or 1,
+            onu_sn=c.get("onu_sn") or "",
+            current_rx=float(c["last_rx_power"]) if c.get("last_rx_power") is not None else None,
+        )
+        db.update_customer_optical(
+            customer_id=c["id"],
+            user_id=user["id"],
+            rx_power=opt["rx_power"],
+            tx_power=opt["tx_power"],
+            olt_rx=opt["olt_rx"],
+            distance=opt["distance_km"],
+            status=opt["status"],
+        )
+        results.append({"customer_id": c["id"], **opt})
+
+    return {"updated": len(results), "items": results}
+
+
+@router.post("/customers/sync-pppoe")
+def sync_pppoe(router_id: Optional[int] = Depends(_get_router_id), user: dict = Depends(get_current_user)):
+    """Fetch PPPoE secrets and active sessions from MikroTik and return sync status."""
+    secrets = _safe(mikrotik.ppp_secret_list, user["id"], router_id)
+    active = _safe(mikrotik.ppp_active_list, user["id"], router_id)
+    active_map = {s.get("name"): s for s in active if s.get("name")}
+
+    existing_customers = db.list_customers(user_id=user["id"], router_id=router_id)
+    existing_users = {c.get("pppoe_username") for c in existing_customers if c.get("pppoe_username")}
+
+    unregistered_secrets = []
+    for s in secrets:
+        uname = s.get("name")
+        if uname and uname not in existing_users:
+            unregistered_secrets.append({
+                "pppoe_username": uname,
+                "profile": s.get("profile"),
+                "service": s.get("service"),
+                "comment": s.get("comment", ""),
+                "is_active": uname in active_map,
+                "active_ip": active_map[uname].get("address") if uname in active_map else None,
+            })
+
+    return {
+        "total_secrets": len(secrets),
+        "total_active": len(active),
+        "synced_customers": len(existing_customers),
+        "unregistered_secrets": unregistered_secrets,
+    }
 
 

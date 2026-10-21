@@ -13,6 +13,7 @@ import NocDashboard from './pages/NocDashboard'
 import InterfaceTraffic from './pages/InterfaceTraffic'
 import PppoeMonitor from './pages/PppoeMonitor'
 import HotspotMonitor from './pages/HotspotMonitor'
+import CustomerMonitor from './pages/CustomerMonitor'
 import ConfigPage from './pages/ConfigPage'
 import NetworkTopology from './pages/NetworkTopology'
 import AdminLogs from './pages/AdminLogs'
@@ -52,6 +53,7 @@ export default function App() {
                 <Route path="/interfaces" element={<Wrap><InterfaceTraffic /></Wrap>} />
                 <Route path="/pppoe" element={<Wrap><PppoeMonitor /></Wrap>} />
                 <Route path="/hotspot" element={<Wrap><HotspotMonitor /></Wrap>} />
+                <Route path="/customers" element={<Wrap><CustomerMonitor /></Wrap>} />
                 <Route path="/topology" element={<Wrap><NetworkTopology /></Wrap>} />
                 <Route path="/config" element={<Wrap><ConfigPage /></Wrap>} />
                 <Route path="/admin/logs" element={<Wrap><AdminLogs /></Wrap>} />

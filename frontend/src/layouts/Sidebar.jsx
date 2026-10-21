@@ -2,6 +2,7 @@ import React from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   Activity,
+  Cable,
   ChevronDown,
   Cpu,
   LogOut,
@@ -32,6 +33,7 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
     { to: '/interfaces', label: t.navTraffic, icon: Activity },
     { to: '/pppoe', label: t.navPppoe, icon: Users },
     { to: '/hotspot', label: t.navHotspot, icon: Wifi },
+    { to: '/customers', label: t.navCustomers, icon: Cable },
     { to: '/topology', label: t.navTopology, icon: Network },
   ]
 

@@ -77,6 +77,45 @@ def init_db():
                     password TEXT NOT NULL DEFAULT '',
                     port INTEGER NOT NULL DEFAULT 8728
                 );
+                CREATE TABLE IF NOT EXISTS olts (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    brand TEXT NOT NULL DEFAULT 'vsol',
+                    host TEXT NOT NULL,
+                    snmp_port INTEGER NOT NULL DEFAULT 161,
+                    snmp_community TEXT NOT NULL DEFAULT 'public',
+                    telnet_port INTEGER NOT NULL DEFAULT 23,
+                    telnet_user TEXT DEFAULT 'admin',
+                    telnet_pass TEXT DEFAULT 'admin',
+                    pon_ports_count INTEGER NOT NULL DEFAULT 8,
+                    description TEXT DEFAULT '',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE IF NOT EXISTS customers (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    router_id INTEGER REFERENCES router_configs(id) ON DELETE SET NULL,
+                    olt_id INTEGER REFERENCES olts(id) ON DELETE SET NULL,
+                    name TEXT NOT NULL,
+                    phone TEXT DEFAULT '',
+                    address TEXT DEFAULT '',
+                    odp_name TEXT DEFAULT '',
+                    pppoe_username TEXT DEFAULT '',
+                    pon_port TEXT DEFAULT 'PON 1',
+                    onu_id INTEGER DEFAULT 1,
+                    onu_sn TEXT DEFAULT '',
+                    onu_model TEXT DEFAULT 'V2801SG',
+                    package_name TEXT DEFAULT '20 Mbps',
+                    status TEXT NOT NULL DEFAULT 'active',
+                    last_rx_power NUMERIC(5,2) DEFAULT NULL,
+                    last_tx_power NUMERIC(5,2) DEFAULT NULL,
+                    last_olt_rx NUMERIC(5,2) DEFAULT NULL,
+                    last_distance NUMERIC(6,2) DEFAULT NULL,
+                    last_optical_status TEXT DEFAULT 'unknown',
+                    last_checked_at TIMESTAMP DEFAULT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
             """)
             conn.commit()
 
@@ -103,20 +142,39 @@ def init_db():
             if cur.fetchone() is None:
                 cur.execute("ALTER TABLE router_configs ADD COLUMN name TEXT NOT NULL DEFAULT 'Router 1'")
                 conn.commit()
-
             cur.execute("SELECT id FROM users WHERE username = %s", ("admin",))
             row = cur.fetchone()
             if row is None:
                 hashed = _pwd_ctx.hash("admin")
                 cur.execute(
-                    "INSERT INTO users (username, hashed_password, role) VALUES (%s, %s, %s)",
+                    "INSERT INTO users (username, hashed_password, role) VALUES (%s, %s, %s) RETURNING id",
                     ("admin", hashed, "admin"),
                 )
+                admin_id = cur.fetchone()[0]
                 conn.commit()
             else:
+                admin_id = row[0]
                 cur.execute(
                     "UPDATE users SET role = 'admin' WHERE username = 'admin' AND role != 'admin'"
                 )
+                conn.commit()
+
+            # Seed sample OLT and customers for admin if none exist
+            cur.execute("SELECT COUNT(*) FROM olts WHERE user_id = %s", (admin_id,))
+            if cur.fetchone()[0] == 0:
+                cur.execute("""
+                    INSERT INTO olts (user_id, name, brand, host, snmp_port, snmp_community, telnet_port, telnet_user, telnet_pass, pon_ports_count, description)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
+                """, (admin_id, 'OLT VSOL Sentral V1600G', 'vsol', '192.168.10.1', 161, 'public', 23, 'admin', 'admin', 8, 'OLT Utama Distribusi Fiber Optik FTTH'))
+                sample_olt_id = cur.fetchone()[0]
+
+                cur.execute("""
+                    INSERT INTO customers (user_id, olt_id, name, phone, address, odp_name, pppoe_username, pon_port, onu_id, onu_sn, onu_model, package_name, status, last_rx_power, last_tx_power, last_olt_rx, last_distance, last_optical_status, last_checked_at)
+                    VALUES
+                    (%s, %s, 'Budi Santoso', '081234567890', 'Jl. Mawar No. 12, RT 02/05', 'ODP-MWR-01', 'budi_ftth', 'PON 1', 1, 'VSOL1A2B3C4D', 'V2801SG', '30 Mbps', 'active', -18.45, 2.10, -19.20, 0.85, 'normal', CURRENT_TIMESTAMP),
+                    (%s, %s, 'Siti Rahmawati', '081398765432', 'Perum Griya Asri Blok B4', 'ODP-GRY-03', 'siti_asri', 'PON 1', 2, 'VSOL5E6F7A8B', 'HG8245H', '20 Mbps', 'active', -24.80, 1.85, -25.10, 2.40, 'warning', CURRENT_TIMESTAMP),
+                    (%s, %s, 'Ahmad Dahlan', '085712348765', 'Jl. Pemuda No. 45', 'ODP-PMD-02', 'ahmad_dahlan', 'PON 2', 1, 'HWTC9C0D1E2F', 'F609', '50 Mbps', 'active', -28.30, 1.20, -29.00, 4.15, 'critical', CURRENT_TIMESTAMP)
+                """, (admin_id, sample_olt_id, admin_id, sample_olt_id, admin_id, sample_olt_id))
                 conn.commit()
     finally:
         _put(conn)
@@ -394,3 +452,319 @@ def safe_router_config(user_id: int) -> dict:
     if cfg is None:
         return {"host": "", "username": "", "password": "", "port": 8728}
     return {**cfg, "password": "••••••••" if cfg["password"] else ""}
+
+
+# ── OLT Management ─────────────────────────────────────────
+
+def list_olts(user_id: int) -> list[dict]:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT o.*, COUNT(c.id) AS customer_count
+                FROM olts o
+                LEFT JOIN customers c ON c.olt_id = o.id
+                WHERE o.user_id = %s
+                GROUP BY o.id
+                ORDER BY o.id ASC
+            """, (user_id,))
+            return [dict(r) for r in cur.fetchall()]
+    finally:
+        _put(conn)
+
+
+def get_olt(olt_id: int, user_id: int) -> dict | None:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT o.*, COUNT(c.id) AS customer_count
+                FROM olts o
+                LEFT JOIN customers c ON c.olt_id = o.id
+                WHERE o.id = %s AND o.user_id = %s
+                GROUP BY o.id
+            """, (olt_id, user_id))
+            row = cur.fetchone()
+            return dict(row) if row else None
+    finally:
+        _put(conn)
+
+
+def add_olt(
+    user_id: int,
+    name: str,
+    brand: str = "vsol",
+    host: str = "192.168.1.100",
+    snmp_port: int = 161,
+    snmp_community: str = "public",
+    telnet_port: int = 23,
+    telnet_user: str = "admin",
+    telnet_pass: str = "admin",
+    pon_ports_count: int = 8,
+    description: str = "",
+) -> int:
+    conn = _conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO olts (
+                    user_id, name, brand, host, snmp_port, snmp_community,
+                    telnet_port, telnet_user, telnet_pass, pon_ports_count, description
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (
+                user_id, name, brand, host, snmp_port, snmp_community,
+                telnet_port, telnet_user, telnet_pass, pon_ports_count, description
+            ))
+            new_id = cur.fetchone()[0]
+            conn.commit()
+            return new_id
+    finally:
+        _put(conn)
+
+
+def update_olt(olt_id: int, user_id: int, **kwargs) -> bool:
+    conn = _conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM olts WHERE id = %s AND user_id = %s", (olt_id, user_id))
+            if cur.fetchone() is None:
+                return False
+
+            allowed = {
+                "name", "brand", "host", "snmp_port", "snmp_community",
+                "telnet_port", "telnet_user", "telnet_pass", "pon_ports_count", "description"
+            }
+            updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
+            if not updates:
+                return True
+
+            set_clause = ", ".join(f"{k}=%s" for k in updates)
+            values = list(updates.values()) + [olt_id, user_id]
+            cur.execute(f"UPDATE olts SET {set_clause} WHERE id=%s AND user_id=%s", values)
+            conn.commit()
+            return True
+    finally:
+        _put(conn)
+
+
+def delete_olt(olt_id: int, user_id: int) -> bool:
+    conn = _conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM olts WHERE id = %s AND user_id = %s", (olt_id, user_id))
+            conn.commit()
+            return cur.rowcount > 0
+    finally:
+        _put(conn)
+
+
+# ── Customer & Optical Monitoring ──────────────────────────
+
+def list_customers(
+    user_id: int,
+    router_id: int | None = None,
+    olt_id: int | None = None,
+    search: str | None = None,
+    status_filter: str | None = None,
+) -> list[dict]:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            query = """
+                SELECT
+                    c.*,
+                    o.name AS olt_name,
+                    o.brand AS olt_brand,
+                    r.name AS router_name
+                FROM customers c
+                LEFT JOIN olts o ON o.id = c.olt_id
+                LEFT JOIN router_configs r ON r.id = c.router_id
+                WHERE c.user_id = %s
+            """
+            params: list = [user_id]
+
+            if router_id is not None:
+                query += " AND c.router_id = %s"
+                params.append(router_id)
+
+            if olt_id is not None:
+                query += " AND c.olt_id = %s"
+                params.append(olt_id)
+
+            if search:
+                term = f"%{search}%"
+                query += """ AND (
+                    c.name ILIKE %s OR
+                    c.pppoe_username ILIKE %s OR
+                    c.phone ILIKE %s OR
+                    c.onu_sn ILIKE %s OR
+                    c.odp_name ILIKE %s OR
+                    c.address ILIKE %s
+                )"""
+                params.extend([term, term, term, term, term, term])
+
+            if status_filter:
+                sf = status_filter.lower()
+                if sf in ("normal", "warning", "critical", "los"):
+                    query += " AND c.last_optical_status = %s"
+                    params.append(sf)
+                elif sf in ("active", "isolir", "maintenance"):
+                    query += " AND c.status = %s"
+                    params.append(sf)
+
+            query += " ORDER BY c.id DESC"
+            cur.execute(query, params)
+            return [dict(r) for r in cur.fetchall()]
+    finally:
+        _put(conn)
+
+
+def get_customer(customer_id: int, user_id: int) -> dict | None:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT
+                    c.*,
+                    o.name AS olt_name,
+                    o.brand AS olt_brand,
+                    r.name AS router_name
+                FROM customers c
+                LEFT JOIN olts o ON o.id = c.olt_id
+                LEFT JOIN router_configs r ON r.id = c.router_id
+                WHERE c.id = %s AND c.user_id = %s
+            """, (customer_id, user_id))
+            row = cur.fetchone()
+            return dict(row) if row else None
+    finally:
+        _put(conn)
+
+
+def add_customer(user_id: int, **kwargs) -> int:
+    conn = _conn()
+    try:
+        with conn.cursor() as cur:
+            allowed = {
+                "router_id", "olt_id", "name", "phone", "address",
+                "odp_name", "pppoe_username", "pon_port", "onu_id",
+                "onu_sn", "onu_model", "package_name", "status",
+                "last_rx_power", "last_tx_power", "last_olt_rx",
+                "last_distance", "last_optical_status", "last_checked_at"
+            }
+            fields = ["user_id"]
+            values = [user_id]
+            for k, v in kwargs.items():
+                if k in allowed:
+                    fields.append(k)
+                    values.append(v)
+
+            cols = ", ".join(fields)
+            placeholders = ", ".join(["%s"] * len(fields))
+            cur.execute(
+                f"INSERT INTO customers ({cols}) VALUES ({placeholders}) RETURNING id",
+                values,
+            )
+            new_id = cur.fetchone()[0]
+            conn.commit()
+            return new_id
+    finally:
+        _put(conn)
+
+
+def update_customer(customer_id: int, user_id: int, **kwargs) -> bool:
+    conn = _conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM customers WHERE id = %s AND user_id = %s", (customer_id, user_id))
+            if cur.fetchone() is None:
+                return False
+
+            allowed = {
+                "router_id", "olt_id", "name", "phone", "address",
+                "odp_name", "pppoe_username", "pon_port", "onu_id",
+                "onu_sn", "onu_model", "package_name", "status",
+                "last_rx_power", "last_tx_power", "last_olt_rx",
+                "last_distance", "last_optical_status", "last_checked_at"
+            }
+            updates = {k: v for k, v in kwargs.items() if k in allowed}
+            if not updates:
+                return True
+
+            set_clause = ", ".join(f"{k}=%s" for k in updates)
+            values = list(updates.values()) + [customer_id, user_id]
+            cur.execute(f"UPDATE customers SET {set_clause} WHERE id=%s AND user_id=%s", values)
+            conn.commit()
+            return True
+    finally:
+        _put(conn)
+
+
+def delete_customer(customer_id: int, user_id: int) -> bool:
+    conn = _conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM customers WHERE id = %s AND user_id = %s", (customer_id, user_id))
+            conn.commit()
+            return cur.rowcount > 0
+    finally:
+        _put(conn)
+
+
+def update_customer_optical(
+    customer_id: int,
+    user_id: int,
+    rx_power: float | None,
+    tx_power: float | None = None,
+    olt_rx: float | None = None,
+    distance: float | None = None,
+    status: str = "normal",
+) -> bool:
+    conn = _conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE customers
+                SET
+                    last_rx_power = %s,
+                    last_tx_power = %s,
+                    last_olt_rx = %s,
+                    last_distance = %s,
+                    last_optical_status = %s,
+                    last_checked_at = CURRENT_TIMESTAMP
+                WHERE id = %s AND user_id = %s
+            """, (rx_power, tx_power, olt_rx, distance, status, customer_id, user_id))
+            conn.commit()
+            return cur.rowcount > 0
+    finally:
+        _put(conn)
+
+
+def get_customer_stats(user_id: int) -> dict:
+    conn = _conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    COUNT(*) AS total,
+                    COUNT(*) FILTER (WHERE status = 'active') AS active,
+                    COUNT(*) FILTER (WHERE last_optical_status = 'normal') AS normal,
+                    COUNT(*) FILTER (WHERE last_optical_status = 'warning') AS warning,
+                    COUNT(*) FILTER (WHERE last_optical_status = 'critical') AS critical,
+                    COUNT(*) FILTER (WHERE last_optical_status = 'los') AS los
+                FROM customers
+                WHERE user_id = %s
+            """, (user_id,))
+            row = cur.fetchone()
+            if not row:
+                return {"total": 0, "active": 0, "normal": 0, "warning": 0, "critical": 0, "los": 0}
+            return {
+                "total": row[0] or 0,
+                "active": row[1] or 0,
+                "normal": row[2] or 0,
+                "warning": row[3] or 0,
+                "critical": row[4] or 0,
+                "los": row[5] or 0,
+            }
+    finally:
+        _put(conn)

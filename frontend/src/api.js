@@ -96,4 +96,31 @@ export const getNocIncidentLogs = (limit = 20) => http.get(`/api/noc/incident-lo
 export const getNocMultiPing = () => http.get('/api/noc/multi-ping').then(r => r.data)
 export const getNocDhcpConntrack = () => http.get('/api/noc/dhcp-conntrack').then(r => r.data)
 
+// OLT & FTTH Customer Monitoring
+export const getOlts = () => http.get('/api/olts').then(r => r.data)
+export const addOlt = (data) => http.post('/api/olts', data).then(r => r.data)
+export const getOlt = (id) => http.get(`/api/olts/${id}`).then(r => r.data)
+export const updateOlt = (id, data) => http.put(`/api/olts/${id}`, data).then(r => r.data)
+export const deleteOlt = (id) => http.delete(`/api/olts/${id}`).then(r => r.data)
+export const testOltConnection = (id) => http.post(`/api/olts/${id}/test`).then(r => r.data)
+export const scanOltOnus = (id) => http.get(`/api/olts/${id}/scan`).then(r => r.data)
+
+export const getCustomers = (params = {}) => {
+  const query = new URLSearchParams()
+  if (params.search) query.set('search', params.search)
+  if (params.status) query.set('status', params.status)
+  if (params.olt_id) query.set('olt_id', params.olt_id)
+  const qs = query.toString()
+  return http.get(`/api/customers${qs ? `?${qs}` : ''}`).then(r => r.data)
+}
+export const getCustomerStats = () => http.get('/api/customers/stats').then(r => r.data)
+export const getCustomer = (id) => http.get(`/api/customers/${id}`).then(r => r.data)
+export const addCustomer = (data) => http.post('/api/customers', data).then(r => r.data)
+export const updateCustomer = (id, data) => http.put(`/api/customers/${id}`, data).then(r => r.data)
+export const deleteCustomer = (id) => http.delete(`/api/customers/${id}`).then(r => r.data)
+export const checkCustomerOptical = (id) => http.post(`/api/customers/${id}/optical`).then(r => r.data)
+export const checkAllOptical = (olt_id = null) => http.post(`/api/customers/check-optical-all${olt_id ? `?olt_id=${olt_id}` : ''}`).then(r => r.data)
+export const syncPppoe = () => http.post('/api/customers/sync-pppoe').then(r => r.data)
+
+
 
