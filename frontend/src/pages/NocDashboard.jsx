@@ -36,6 +36,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { useRouter } from '../context/RouterContext'
+import { useTheme } from '../context/ThemeContext'
 import { getNocOverview } from '../api'
 import useInterfacesWS from '../hooks/useInterfacesWS'
 import useTrafficWS from '../hooks/useTrafficWS'
@@ -63,6 +64,7 @@ function playWarningBeep() {
 
 export default function NocDashboard() {
   const { activeRouterId, activeRouter } = useRouter()
+  const { resolvedTheme } = useTheme()
   const [nocData, setNocData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -70,6 +72,15 @@ export default function NocDashboard() {
   const [selectedPortName, setSelectedPortName] = useState(null)
   const [selectedIface, setSelectedIface] = useState('')
   const [isFullscreen, setIsFullscreen] = useState(false)
+
+  // Listen to browser fullscreen changes (e.g. Esc key pressed)
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsFullscreen(!!document.fullscreenElement)
+    }
+    document.addEventListener('fullscreenchange', handleFsChange)
+    return () => document.removeEventListener('fullscreenchange', handleFsChange)
+  }, [])
 
   // Feature 4: Bandwidth Capacity Threshold
   const [wanCapacityMbps, setWanCapacityMbps] = useState(() => {
@@ -251,21 +262,21 @@ export default function NocDashboard() {
   return (
     <div className="space-y-5 pb-12">
       {/* ── Top Header & NOC Status Bar ── */}
-      <div className="bg-slate-900 text-white rounded-2xl p-5 shadow-xl border border-slate-800">
+      <div className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 rounded-2xl p-5 shadow-card dark:shadow-none border border-slate-200/80 dark:border-slate-800 transition-colors">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-violet-600/30 border border-violet-500/40 flex items-center justify-center text-violet-400">
+            <div className="w-10 h-10 rounded-xl bg-violet-50 dark:bg-violet-950/40 border border-violet-200 dark:border-violet-800/40 flex items-center justify-center text-violet-600 dark:text-violet-400">
               <Radio size={22} className="animate-pulse" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold tracking-tight text-white">NOC Command Center</h1>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">NOC Command Center</h1>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-ping" />
                   LIVE TELEMETRY
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 {res?.identity || 'MikroTik Router'} · {res?.board_name || activeRouter?.name} · {res?.host || activeRouter?.host}
               </p>
             </div>
@@ -283,7 +294,7 @@ export default function NocDashboard() {
                   return (
                     <div
                       key={mp.name}
-                      className="flex items-center gap-2 bg-slate-800/90 border border-slate-700/60 rounded-xl px-2.5 py-1.5 text-xs shadow-inner"
+                      className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 rounded-xl px-2.5 py-1.5 text-xs shadow-xs"
                       title={`Target: ${mp.host} (Loss: ${mp.loss}%)`}
                     >
                       <span
@@ -291,17 +302,17 @@ export default function NocDashboard() {
                           !isOnline
                             ? 'bg-rose-500'
                             : isGood
-                            ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]'
+                            ? 'bg-emerald-500 dark:bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]'
                             : isFair
-                            ? 'bg-amber-400'
-                            : 'bg-rose-400'
+                            ? 'bg-amber-500 dark:bg-amber-400'
+                            : 'bg-rose-500 dark:bg-rose-400'
                         }`}
                       />
                       <div>
-                        <div className="text-[9px] uppercase font-bold text-slate-400 leading-tight">
+                        <div className="text-[9px] uppercase font-bold text-slate-400 dark:text-slate-400 leading-tight">
                           {mp.name}
                         </div>
-                        <div className="text-[11px] font-semibold text-white leading-tight font-mono">
+                        <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-200 leading-tight font-mono">
                           {lat != null ? `${lat} ms` : isOnline ? '< 1 ms' : 'Down'}
                         </div>
                       </div>
@@ -309,17 +320,17 @@ export default function NocDashboard() {
                   )
                 })
               ) : (
-                <div className="flex items-center gap-2 bg-slate-800/80 border border-slate-700/60 rounded-xl px-3 py-1.5">
-                  <Activity size={15} className="text-emerald-400" />
-                  <span className="text-xs text-slate-300">Checking uplink...</span>
+                <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 rounded-xl px-3 py-1.5 text-xs text-slate-500 dark:text-slate-300">
+                  <Activity size={15} className="text-emerald-500 dark:text-emerald-400" />
+                  <span>Checking uplink...</span>
                 </div>
               )}
             </div>
 
             {/* Uptime pill */}
-            <div className="bg-slate-800/80 border border-slate-700/60 rounded-xl px-3 py-1.5">
-              <div className="text-[10px] uppercase font-bold text-slate-400">Uptime</div>
-              <div className="text-xs font-semibold text-white truncate max-w-[150px]">
+            <div className="bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 rounded-xl px-3 py-1.5">
+              <div className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-400">Uptime</div>
+              <div className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate max-w-[150px]">
                 {formatUptime(res?.uptime)}
               </div>
             </div>
@@ -329,12 +340,12 @@ export default function NocDashboard() {
               onClick={toggleSound}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition ${
                 soundEnabled
-                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
-                  : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
+                  ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/40 hover:bg-emerald-100 dark:hover:bg-emerald-500/30'
+                  : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
               }`}
               title={soundEnabled ? 'Alarm Suara Link Down: ON' : 'Alarm Suara Link Down: OFF'}
             >
-              {soundEnabled ? <Volume2 size={14} className="text-emerald-400" /> : <VolumeX size={14} />}
+              {soundEnabled ? <Volume2 size={14} className="text-emerald-500 dark:text-emerald-400" /> : <VolumeX size={14} />}
               <span>{soundEnabled ? 'Alarm ON' : 'Mute'}</span>
             </button>
 
@@ -342,7 +353,7 @@ export default function NocDashboard() {
             <button
               onClick={() => fetchTelemetry(true)}
               disabled={refreshing}
-              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 transition"
+              className="p-2 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl border border-slate-200 dark:border-slate-700 transition"
               title="Refresh Data"
             >
               <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
@@ -350,11 +361,11 @@ export default function NocDashboard() {
 
             <button
               onClick={toggleFullscreen}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold rounded-xl transition"
-              title="Kiosk / TV Wall Mode"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold rounded-xl transition shadow-sm"
+              title="Mode Kiosk / Tampilan Layar Penuh (NOC TV Wall)"
             >
               {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-              <span>{isFullscreen ? 'Exit Kiosk' : 'Kiosk Mode'}</span>
+              <span>{isFullscreen ? 'Keluar Layar Penuh' : 'Layar Penuh'}</span>
             </button>
           </div>
         </div>
@@ -560,7 +571,7 @@ export default function NocDashboard() {
       </div>
 
       {/* ── Row 2: Physical Port Visualizer Panel ── */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-card dark:shadow-none border border-slate-100 dark:border-slate-800">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-card dark:shadow-none border border-slate-200/80 dark:border-slate-800">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div>
             <div className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
@@ -574,20 +585,20 @@ export default function NocDashboard() {
 
           {/* Quick summary badges */}
           <div className="flex items-center gap-2 text-xs">
-            <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 font-semibold rounded-lg border border-emerald-200">
+            <span className="px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-semibold rounded-lg border border-emerald-200 dark:border-emerald-900/60">
               {portsSummary?.running ?? 0} Up
             </span>
-            <span className="px-2.5 py-1 bg-slate-100 text-slate-600 font-semibold rounded-lg border border-slate-200">
+            <span className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 font-semibold rounded-lg border border-slate-200 dark:border-slate-700">
               {portsSummary?.down ?? 0} Down
             </span>
             {(portsSummary?.rx_drop > 0 || portsSummary?.tx_drop > 0) && (
-              <span className="px-2.5 py-1 bg-amber-50 text-amber-700 font-semibold rounded-lg border border-amber-200 flex items-center gap-1">
+              <span className="px-2.5 py-1 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 font-semibold rounded-lg border border-amber-200 dark:border-amber-900/60 flex items-center gap-1">
                 <AlertTriangle size={12} />
                 {(portsSummary?.rx_drop || 0) + (portsSummary?.tx_drop || 0)} Drops
               </span>
             )}
             {(portsSummary?.rx_error > 0 || portsSummary?.tx_error > 0) && (
-              <span className="px-2.5 py-1 bg-rose-50 text-rose-700 font-semibold rounded-lg border border-rose-200 flex items-center gap-1">
+              <span className="px-2.5 py-1 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 font-semibold rounded-lg border border-rose-200 dark:border-rose-900/60 flex items-center gap-1">
                 <XCircle size={12} />
                 {(portsSummary?.rx_error || 0) + (portsSummary?.tx_error || 0)} Errors
               </span>
@@ -608,22 +619,22 @@ export default function NocDashboard() {
                 onClick={() => setSelectedPortName(port.name)}
                 className={`group relative p-3 rounded-xl border transition-all cursor-pointer select-none ${
                   isUp
-                    ? 'bg-slate-900 border-slate-700 hover:border-emerald-500/80 shadow-md'
-                    : 'bg-slate-100/80 border-slate-200 hover:border-slate-300'
+                    ? 'bg-white dark:bg-slate-800/70 border-slate-200 dark:border-slate-700/70 hover:border-emerald-500/70 dark:hover:border-emerald-500/70 shadow-xs dark:shadow-none'
+                    : 'bg-slate-50/70 dark:bg-slate-900/40 border-slate-200/70 dark:border-slate-800/60 hover:border-slate-300 dark:hover:border-slate-700 opacity-75 hover:opacity-100'
                 }`}
               >
                 {/* Port header: Port Name & LED */}
                 <div className="flex items-center justify-between mb-2">
-                  <span className={`text-xs font-bold truncate ${isUp ? 'text-white' : 'text-slate-600'}`}>
+                  <span className={`text-xs font-bold truncate ${isUp ? 'text-slate-800 dark:text-slate-200' : 'text-slate-500 dark:text-slate-400'}`}>
                     {port.name}
                   </span>
                   <span
                     className={`w-2.5 h-2.5 rounded-full transition-all ${
                       isUp
-                        ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse'
+                        ? 'bg-emerald-500 dark:bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)] animate-pulse'
                         : port.disabled
-                        ? 'bg-slate-400'
-                        : 'bg-rose-500'
+                        ? 'bg-slate-300 dark:bg-slate-600'
+                        : 'bg-rose-500/80'
                     }`}
                   />
                 </div>
@@ -633,8 +644,8 @@ export default function NocDashboard() {
                   <div
                     className={`w-12 h-8 rounded border flex flex-col items-center justify-center transition ${
                       isUp
-                        ? 'bg-slate-800 border-slate-600 text-emerald-400 group-hover:border-emerald-400'
-                        : 'bg-slate-200 border-slate-300 text-slate-400'
+                        ? 'bg-emerald-50/70 dark:bg-slate-800 border-emerald-200/70 dark:border-slate-700 text-emerald-600 dark:text-emerald-400 group-hover:border-emerald-400'
+                        : 'bg-slate-100 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500'
                     }`}
                   >
                     <span className="text-[9px] font-mono font-bold tracking-wider">
@@ -648,11 +659,15 @@ export default function NocDashboard() {
 
                 {/* Traffic summary on port */}
                 <div className="mt-1 space-y-0.5">
-                  <div className={`text-[10px] truncate flex items-center justify-between ${isUp ? 'text-slate-300' : 'text-slate-500'}`}>
-                    <span className="text-sky-400">↓ {formatBps(port.rx_bps || 0)}</span>
+                  <div className="text-[10px] truncate flex items-center justify-between">
+                    <span className={isUp ? 'text-sky-600 dark:text-sky-400 font-medium' : 'text-slate-400 dark:text-slate-500'}>
+                      ↓ {formatBps(port.rx_bps || 0)}
+                    </span>
                   </div>
-                  <div className={`text-[10px] truncate flex items-center justify-between ${isUp ? 'text-slate-300' : 'text-slate-500'}`}>
-                    <span className="text-orange-400">↑ {formatBps(port.tx_bps || 0)}</span>
+                  <div className="text-[10px] truncate flex items-center justify-between">
+                    <span className={isUp ? 'text-orange-600 dark:text-orange-400 font-medium' : 'text-slate-400 dark:text-slate-500'}>
+                      ↑ {formatBps(port.tx_bps || 0)}
+                    </span>
                   </div>
                 </div>
 
@@ -735,13 +750,20 @@ export default function NocDashboard() {
                     <stop offset="95%" stopColor="#f97316" stopOpacity={0.0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={resolvedTheme === 'dark' ? '#1e293b' : '#f1f5f9'} vertical={false} />
                 <XAxis dataKey="t" tick={{ fontSize: 10, fill: '#94a3b8' }} interval="preserveStartEnd" />
                 <YAxis tickFormatter={(v) => formatBps(v)} tick={{ fontSize: 10, fill: '#94a3b8' }} />
                 <Tooltip
                   formatter={(val, name) => [formatBps(val), name === 'rx' ? 'Download (RX)' : 'Upload (TX)']}
                   labelFormatter={(lbl) => `Waktu: ${lbl}`}
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: 8, color: '#f8fafc', fontSize: 12 }}
+                  contentStyle={{
+                    backgroundColor: resolvedTheme === 'dark' ? '#0f172a' : '#ffffff',
+                    borderColor: resolvedTheme === 'dark' ? '#334155' : '#e2e8f0',
+                    borderRadius: 8,
+                    color: resolvedTheme === 'dark' ? '#f8fafc' : '#0f172a',
+                    fontSize: 12,
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                  }}
                 />
                 <Area type="monotone" dataKey="rx" stroke="#0ea5e9" strokeWidth={2} fillOpacity={1} fill="url(#rxGrad)" isAnimationActive={false} />
                 <Area type="monotone" dataKey="tx" stroke="#f97316" strokeWidth={2} fillOpacity={1} fill="url(#txGrad)" isAnimationActive={false} />

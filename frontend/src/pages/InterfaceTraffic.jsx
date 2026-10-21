@@ -10,6 +10,7 @@ import {
   YAxis,
 } from 'recharts'
 import { useRouter } from '../context/RouterContext'
+import { useTheme } from '../context/ThemeContext'
 import useInterfacesWS from '../hooks/useInterfacesWS'
 import { formatBps } from '../utils/format'
 
@@ -25,6 +26,7 @@ function StatCard({ title, value, sub, color }) {
 
 export default function InterfaceTraffic() {
   const { activeRouterId } = useRouter()
+  const { resolvedTheme } = useTheme()
   const { interfaces, totals, points, error } = useInterfacesWS(activeRouterId)
 
   if (!activeRouterId) {
@@ -50,7 +52,7 @@ export default function InterfaceTraffic() {
         <StatCard title="Total TX" value={formatBps(totals.tx_bps)} sub="Upload aggregate" color="#f97316" />
       </div>
 
-      <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-card dark:shadow-none p-4 sm:p-5 mb-4">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-card dark:shadow-none p-4 sm:p-5 mb-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2">
           <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">REAL TIME TRAFFIC</div>
           <div className="text-xs text-slate-500 dark:text-slate-400 flex gap-3">
@@ -61,10 +63,20 @@ export default function InterfaceTraffic() {
         <div className="h-52 sm:h-72">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={points} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />
+              <CartesianGrid strokeDasharray="3 3" stroke={resolvedTheme === 'dark' ? '#1e293b' : '#eef2f7'} />
               <XAxis dataKey="t" tick={{ fontSize: 11, fill: '#94a3b8' }} />
               <YAxis tickFormatter={(v) => formatBps(v)} tick={{ fontSize: 11, fill: '#94a3b8' }} width={80} />
-              <Tooltip formatter={(v) => formatBps(v)} contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: 8, color: '#f8fafc', fontSize: 12 }} />
+              <Tooltip
+                formatter={(v) => formatBps(v)}
+                contentStyle={{
+                  backgroundColor: resolvedTheme === 'dark' ? '#0f172a' : '#ffffff',
+                  borderColor: resolvedTheme === 'dark' ? '#334155' : '#e2e8f0',
+                  borderRadius: 8,
+                  color: resolvedTheme === 'dark' ? '#f8fafc' : '#0f172a',
+                  fontSize: 12,
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                }}
+              />
               <Legend />
               <Line type="monotone" dataKey="rx" name="RX" stroke="#0ea5e9" strokeWidth={2} dot={false} isAnimationActive={false} />
               <Line type="monotone" dataKey="tx" name="TX" stroke="#f97316" strokeWidth={2} dot={false} isAnimationActive={false} />

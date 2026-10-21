@@ -85,5 +85,28 @@ export default function MyComponent() {
 
 ---
 
+---
+
 ## 5. Verifikasi & Build
 - `npm run build` dijalankan pada folder `frontend/` dan berhasil tanpa error (`exit code 0`).
+
+---
+
+## 6. Penyesuaian Kontras Warna (Balanced Contrast) & Istilah Kiosk Mode
+
+### A. Masalah Kontras Sebelumnya
+1. **Port Matrix (Status Down)**: Sebelumnya port down di-hardcode dengan `bg-slate-100/80` tanpa class dark mode. Pada tema gelap, port down muncul sebagai kotak putih terang yang menyilaukan dan kontrasnya terlalu tajam.
+2. **Port Matrix (Status Up)**: Di-hardcode dengan `bg-slate-900`. Pada tema terang, port up muncul sebagai kotak hitam pekat yang kontrasnya kasar.
+3. **NOC Header**: Di-hardcode dengan `bg-slate-900 text-white`. Pada tema terang, header menjadi blok hitam pekat yang tidak menyatu dengan sisa dashboard.
+4. **Grafik Recharts**: Garis grid (`CartesianGrid`) dan popup `Tooltip` tadinya di-hardcode satu warna sehingga tidak adaptif.
+
+### B. Solusi Kontras Halus & Seimbang
+- **Port Matrix**:
+  - Mode Dark: Port Up menggunakan `dark:bg-slate-800/70` dengan LED hijau pulsing halus; Port Down menggunakan `dark:bg-slate-900/40` (gelap lembut, tidak silau putih).
+  - Mode Light: Port Up menggunakan `bg-white border-slate-200` (bersih dan terang); Port Down menggunakan `bg-slate-50/70` (abu-abu lembut).
+- **NOC Header**: Dibuat responsif penuh (`bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-800`).
+- **Grafik Recharts**: `stroke` grid dan latar belakang `Tooltip` sekarang membaca `resolvedTheme` secara dinamis.
+
+### C. Penjelasan & Penerjemahan Istilah "Kiosk Mode"
+- **Arti Kiosk Mode**: Dalam dunia IT / NOC, *Kiosk Mode* merujuk pada mode tampilan penuh layar (Fullscreen) yang menonaktifkan/menyembunyikan navigasi browser dan header OS, sehingga dashboard dapat dipajang mandiri 24/7 di monitor NOC atau TV dinding (*wall display*).
+- **Label Tombol**: Diperbarui menjadi **"Layar Penuh"** (saat normal) dan **"Keluar Layar Penuh"** (saat fullscreen aktif), dengan tooltip: `"Mode Kiosk / Tampilan Layar Penuh (NOC TV Wall)"`.
