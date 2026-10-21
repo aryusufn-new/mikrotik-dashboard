@@ -66,11 +66,15 @@ Menyimpan profil pelanggan FTTH dan telemetri optik:
 
 ---
 
-## 3. Layanan Backend (`backend/app/olt_service.py`)
-- `test_olt_connection(host, telnet_port, snmp_port)`: Uji soket TCP port Telnet dan latensi ping.
-- `classify_optical_power(rx_power)`: Menentukan klasifikasi status sinyal optik (`normal`, `warning`, `critical`, `los`).
-- `fetch_onu_optical(olt, pon_port, onu_id, onu_sn)`: Mengambil pembacaan redaman laser optik, daya TX, dan jarak fiber. Dilengkapi fallback telemetri cerdas jika OLT fisik berada di balik NAT/IP privat lokal.
-- `scan_olt_onus(olt)`: Memindai seluruh port PON pada OLT untuk mendeteksi unit ONU yang tersambung.
+## 3. Layanan Backend SNMP v2c (`backend/app/olt_service.py`)
+Implementasi mesin SNMP v2c mandiri (Pure Python, tanpa dependensi library eksternal C) menggunakan paket UDP port 161 dan ASN.1 BER encoding/decoding:
+- `_build_snmp_packet(community, oid, req_id, is_next)`: Membentuk paket SNMPv2c `GetRequest` (0xA0) dan `GetNextRequest` (0xA1).
+- `_parse_snmp_response(raw_bytes)`: Mengurai PDU `GetResponse` (0xA2) dan mengekstrak nilai INTEGER, Counter32, Gauge32, TimeTicks, dan OctetString.
+- `snmp_get(host, port, community, oid, timeout)`: Melakukan SNMP GET satu OID.
+- `snmp_walk(host, port, community, root_oid, max_items, timeout)`: Melakukan SNMP WALK dengan traversal pohon OID.
+- `test_olt_connection(host, snmp_port, snmp_community, telnet_port)`: Menguji respons SNMP MIB-II `sysDescr` (OID `.1.3.6.1.2.1.1.1.0`) dan `sysUpTime` (OID `.1.3.6.1.2.1.1.3.0`).
+- `fetch_onu_optical(olt, pon_port, onu_id, onu_sn)`: Mengambil telemetri redaman optik live dari OLT via SNMP menggunakan OID vendor VSOL / C-Data (`.1.3.6.1.4.1.37950.1.1.5.12.2.1.8...`) dan HSGQ (`.1.3.6.1.4.1.5105...`). Dilengkapi penanganan fallback otomatis jika OLT sedang dalam tahap staging/offline.
+- `scan_olt_onus(olt)`: Memindai tabel ONU pada OLT menggunakan SNMP Walk untuk mendeteksi unit yang terdaftar.
 
 ---
 

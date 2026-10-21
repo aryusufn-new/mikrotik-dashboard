@@ -533,8 +533,9 @@ def test_olt(olt_id: int, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="OLT tidak ditemukan")
     return olt_service.test_olt_connection(
         host=olt["host"],
-        telnet_port=olt["telnet_port"],
         snmp_port=olt["snmp_port"],
+        snmp_community=olt.get("snmp_community") or "public",
+        telnet_port=olt["telnet_port"],
     )
 
 

@@ -682,9 +682,12 @@ function OltManagerModal({ isOpen, onClose, olts, onReload }) {
                         <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300">
                           {olt.brand}
                         </span>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
+                          SNMP v2c
+                        </span>
                       </div>
                       <p className="text-xs text-slate-400 font-mono mt-0.5">
-                        Host: {olt.host} • Telnet: {olt.telnet_port} • SNMP: {olt.snmp_port} • {olt.pon_ports_count} Port PON
+                        Host: {olt.host} • Port SNMP: {olt.snmp_port || 161} (Community: {olt.snmp_community || 'public'}) • {olt.pon_ports_count} Port PON
                       </p>
                     </div>
 
@@ -697,9 +700,9 @@ function OltManagerModal({ isOpen, onClose, olts, onReload }) {
                         {testingId === olt.id ? (
                           <Loader2 size={13} className="animate-spin text-violet-500" />
                         ) : (
-                          <Activity size={13} className="text-violet-500" />
+                          <Zap size={13} className="text-violet-500" />
                         )}
-                        Test Ping
+                        Test SNMP
                       </button>
 
                       <button
@@ -841,29 +844,38 @@ function OltManagerModal({ isOpen, onClose, olts, onReload }) {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Port Telnet / Port CLI
-                </label>
-                <input
-                  type="number"
-                  value={form.telnet_port}
-                  onChange={(e) => setForm({ ...form, telnet_port: Number(e.target.value) })}
-                  className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
-                />
+            {/* SNMP Configuration */}
+            <div className="p-3.5 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-900/40 rounded-xl space-y-2.5">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                <Zap size={14} className="text-emerald-600" /> Konfigurasi SNMP v2c (Koneksi Utama)
               </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Protokol SNMP v2c digunakan untuk membaca redaman optik (RX/TX dBm), jarak fiber, dan status live ONU dari OLT secara berkala.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Port SNMP (UDP) *
+                  </label>
+                  <input
+                    type="number"
+                    value={form.snmp_port}
+                    onChange={(e) => setForm({ ...form, snmp_port: Number(e.target.value) || 161 })}
+                    className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  SNMP Community
-                </label>
-                <input
-                  value={form.snmp_community}
-                  onChange={(e) => setForm({ ...form, snmp_community: e.target.value })}
-                  placeholder="public"
-                  className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
-                />
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    SNMP Community (Read-Only) *
+                  </label>
+                  <input
+                    value={form.snmp_community}
+                    onChange={(e) => setForm({ ...form, snmp_community: e.target.value })}
+                    placeholder="public"
+                    className="w-full font-mono border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
               </div>
             </div>
 
