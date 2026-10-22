@@ -544,7 +544,19 @@ def scan_onus(olt_id: int, user: dict = Depends(get_current_user)):
     olt = db.get_olt(olt_id, user["id"])
     if not olt:
         raise HTTPException(status_code=404, detail="OLT tidak ditemukan")
-    return olt_service.scan_olt_onus(olt)
+    items = olt_service.scan_olt_onus(olt)
+    port_breakdown = {}
+    for it in items:
+        p = it.get("pon_port") or "PON 1"
+        port_breakdown[p] = port_breakdown.get(p, 0) + 1
+    return {
+        "olt_id": olt_id,
+        "olt_name": olt.get("name"),
+        "total_onus": len(items),
+        "source": items[0].get("source") if items else "Unknown",
+        "port_breakdown": port_breakdown,
+        "items": items,
+    }
 
 
 # ── Customer FTTH Endpoints ────────────────────────────────
@@ -1023,19 +1035,26 @@ def auto_scan_all_customers(
         except Exception:
             pass
 
+        # Calculate breakdown per PON port
+        port_breakdown = {}
+        for it in onus:
+            p = it.get("pon_port") or "PON 1"
+            port_breakdown[p] = port_breakdown.get(p, 0) + 1
+
         total_in_db = len(db.list_customers(user["id"]))
 
         return {
             "success": True,
             "master_source": "OLT Physical ONUs",
             "total_onus_scanned": len(onus),
+            "port_breakdown": port_breakdown,
             "total_secrets_available": len(secrets),
             "matched_with_mikrotik": len(matched_secrets_used),
             "imported_new": imported_count,
             "updated_existing": updated_count,
             "deleted_orphans": deleted_orphans,
             "total_customers": total_in_db,
-            "message": f"Berhasil sinkronisasi OLT ({len(onus)} ONU fisik). {len(matched_secrets_used)} terhubung ke PPPoE MikroTik. {deleted_orphans} data sisa tanpa ONU dibersihkan.",
+            "message": f"Berhasil sinkronisasi OLT ({len(onus)} ONU fisik terdeteksi di {len(port_breakdown)} port PON). {len(matched_secrets_used)} terhubung ke PPPoE MikroTik. {deleted_orphans} data tanpa ONU dibersihkan.",
         }
     except Exception as exc:
         traceback.print_exc()
