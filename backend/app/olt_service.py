@@ -33,6 +33,15 @@ VSOL_ONU_DIST = f"{VSOL_BASE}.10.1.1.7"     # Distance in meters
 VSOL_ONU_STATUS = f"{VSOL_BASE}.10.1.1.2"   # 1=online, 2=offline, 3=auth-fail
 VSOL_ONU_SN = f"{VSOL_BASE}.10.1.1.5"       # ONU MAC / Serial
 
+# C-Data Enterprise (PEN 34592) & IEEE 802.3ah EPON Standard MIBs
+CDATA_BASE = ".1.3.6.1.4.1.34592"
+IEEE_EPON_BASE = ".1.3.6.1.4.1.17409.2.3.4.1.1"  # dot3ExtPonOnuTable
+IEEE_EPON_MAC = f"{IEEE_EPON_BASE}.2"            # MAC Address of ONU
+IEEE_EPON_STATUS = f"{IEEE_EPON_BASE}.3"         # 1=up/online, 2=down
+IEEE_EPON_RX = ".1.3.6.1.4.1.17409.2.8.4.1.1.7"  # Optical RX
+IF_DESCR = ".1.3.6.1.2.1.2.2.1.2"                # Standard interface description
+IF_NAME = ".1.3.6.1.2.1.31.1.1.1.1"              # Standard ifName
+
 # HSGQ Enterprise OID
 HSGQ_BASE = ".1.3.6.1.4.1.5105.1.3"
 HSGQ_ONU_RX = f"{HSGQ_BASE}.1.2"
@@ -514,50 +523,139 @@ def fetch_onu_optical(
 
 
 def scan_olt_onus(olt: dict[str, Any]) -> list[dict[str, Any]]:
-    """Scan registered ONUs across the OLT via SNMP Walk.
-    If physical device is offline, generates structured discovery list.
+    """Scan registered ONUs across the OLT via Live SNMP Walk.
+    Supports C-Data (EPON/GPON), VSOL, HSGQ, and IEEE 802.3ah dot3ExtPonOnuTable.
+    If physical device is offline / unreachable, provides structured discovery fallback.
     """
+    import re
+
     host = olt.get("host") or "192.168.10.1"
     port = int(olt.get("snmp_port") or 161)
     community = olt.get("snmp_community") or "public"
     brand = (olt.get("brand") or "vsol").lower()
     ports_count = int(olt.get("pon_ports_count") or 8)
 
-    # 1. Try real SNMP Walk on ONU Table
-    walk_results = snmp_walk(
-        host=host,
-        port=port,
-        community=community,
-        root_oid=f"{VSOL_BASE}.10.1.1.2" if brand in ("vsol", "cdata") else ".1.3.6.1.2.1.1",
-        max_items=50,
-        timeout=1.5,
-    )
+    # 1. Probe live device reachability via MIB-II sysDescr
+    probe = snmp_get(host, port, community, OID_SYS_DESCR, timeout=1.5)
+    is_live = probe.get("success", False)
 
-    if walk_results:
-        # Parsed from real SNMP walk
-        items = []
-        for it in walk_results:
-            oid_parts = it["oid"].split(".")
-            if len(oid_parts) >= 2:
-                p_idx = int(oid_parts[-2])
-                o_idx = int(oid_parts[-1])
-                opt = fetch_onu_optical(olt, f"PON {p_idx}", o_idx)
-                items.append({
-                    "pon_port": f"PON {p_idx}",
+    if is_live:
+        # Determine candidate root OIDs for ONU discovery based on brand
+        candidate_oids = []
+        if brand == "cdata":
+            candidate_oids = [
+                IEEE_EPON_MAC,                     # .1.3.6.1.4.1.17409.2.3.4.1.1.2 (IEEE EPON ONU MAC)
+                f"{CDATA_BASE}.1.3.4.1.1.2",       # C-Data EPON ONU MAC Table
+                f"{CDATA_BASE}.1.3.100.12.1.1.2",  # C-Data GPON ONU Serial Table
+                IEEE_EPON_STATUS,                  # .1.3.6.1.4.1.17409.2.3.4.1.1.3 (Status Table)
+                IF_DESCR,                          # Standard interfaces (EPON0/1:1, etc.)
+            ]
+        elif brand == "vsol":
+            candidate_oids = [
+                VSOL_ONU_SN,                       # .1.3.6.1.4.1.37950.1.1.5.10.1.1.5 (ONU Serial/MAC)
+                VSOL_ONU_STATUS,                   # .1.3.6.1.4.1.37950.1.1.5.10.1.1.2
+                IF_DESCR,
+            ]
+        elif brand == "hsgq":
+            candidate_oids = [
+                f"{HSGQ_BASE}.1.3",
+                f"{HSGQ_BASE}.1.1",
+                IF_DESCR,
+            ]
+        else:
+            candidate_oids = [
+                IEEE_EPON_MAC,
+                VSOL_ONU_SN,
+                IF_DESCR,
+            ]
+
+        live_onus = []
+        seen_keys = set()
+
+        for root in candidate_oids:
+            walk_results = snmp_walk(
+                host=host,
+                port=port,
+                community=community,
+                root_oid=root,
+                max_items=128,
+                timeout=2.0,
+            )
+            if not walk_results:
+                continue
+
+            for it in walk_results:
+                ret_oid = it["oid"]
+                val = it.get("value")
+                oid_parts = ret_oid.split(".")
+
+                p_idx = 1
+                o_idx = 1
+                sn_found = ""
+
+                # Case A: Interface description (e.g. EPON0/1:2, gpon-onu_1/1/2:3, PON1:4)
+                if root == IF_DESCR and val:
+                    val_str = str(val)
+                    m = re.search(r'(?:epon|gpon|pon)[-_ /]?0?/?(\d+)[:/](\d+)', val_str, re.IGNORECASE)
+                    if m:
+                        p_idx = int(m.group(1))
+                        o_idx = int(m.group(2))
+                        sn_found = f"ONU-{p_idx:02d}-{o_idx:02d}"
+
+                # Case B: OID suffix has port and onu index (e.g. ...1.2 -> Port 1, ONU 2)
+                elif len(oid_parts) >= 2:
+                    try:
+                        p_idx = int(oid_parts[-2])
+                        o_idx = int(oid_parts[-1])
+                    except (ValueError, TypeError):
+                        p_idx = 1
+                        o_idx = 1
+
+                    # Extract MAC or Serial string from SNMP value
+                    if isinstance(val, (bytes, bytearray)):
+                        if len(val) == 6:
+                            sn_found = ":".join(f"{b:02X}" for b in val)
+                        else:
+                            sn_found = val.hex().upper()
+                    elif isinstance(val, str) and val.strip():
+                        sn_clean = val.strip()
+                        # If hex format like "E0 67 B3 ..."
+                        if len(sn_clean.split()) == 6:
+                            sn_found = ":".join(s.upper() for s in sn_clean.split())
+                        else:
+                            sn_found = sn_clean
+                    else:
+                        sn_found = f"{brand.upper()}{p_idx:02X}{o_idx:02X}"
+
+                if not sn_found:
+                    continue
+
+                key = (p_idx, o_idx)
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+
+                port_name = f"PON {p_idx}"
+                opt = fetch_onu_optical(olt, port_name, o_idx, sn_found)
+
+                live_onus.append({
+                    "pon_port": port_name,
                     "onu_id": o_idx,
-                    "onu_sn": f"VSOL{p_idx:02X}{o_idx:02X}",
-                    "onu_model": "V2801SG",
+                    "onu_sn": sn_found,
+                    "onu_model": "ONT-GE" if brand == "cdata" else ("V2801SG" if brand == "vsol" else "ONU-GEN"),
                     "rx_power": opt["rx_power"],
                     "tx_power": opt["tx_power"],
                     "olt_rx": opt["olt_rx"],
                     "distance_km": opt["distance_km"],
                     "status": opt["status"],
                     "status_label": opt["status_label"],
+                    "source": "SNMP Live",
                 })
-        if items:
-            return items
 
-    # 2. Structured fallback discovery
+            if live_onus:
+                return live_onus
+
+    # 2. Structured fallback discovery if physical device is unreachable/offline
     prefix = "VSOL" if brand == "vsol" else ("HSGQ" if brand == "hsgq" else ("CDAT" if brand == "cdata" else "GPON"))
     results = []
     for port_idx in range(1, min(ports_count + 1, 9)):
@@ -580,6 +678,7 @@ def scan_olt_onus(olt: dict[str, Any]) -> list[dict[str, Any]]:
                 "distance_km": optical["distance_km"],
                 "status": optical["status"],
                 "status_label": optical["status_label"],
+                "source": "Simulation (Fallback)",
             })
 
     return results

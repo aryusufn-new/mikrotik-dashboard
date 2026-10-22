@@ -751,7 +751,18 @@ function OltManagerModal({ isOpen, onClose, olts, onReload }) {
                   {scanResult && scanResult.id === olt.id && (
                     <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg space-y-2">
                       <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
-                        <span>Daftar ONU Terdeteksi ({scanResult.items.length} unit):</span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>Daftar ONU ({scanResult.items.length} unit):</span>
+                          {scanResult.items[0]?.source === 'SNMP Live' ? (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200">
+                              🟢 Live SNMP (Real OLT)
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200" title="IP OLT belum terjangkau dari server cloud. Menampilkan data fallback.">
+                              🟡 Mode Simulasi (OLT belum tembus IP/VPN)
+                            </span>
+                          )}
+                        </div>
                         <button
                           onClick={() => setScanResult(null)}
                           className="text-slate-400 hover:text-slate-600"
