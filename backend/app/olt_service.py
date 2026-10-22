@@ -33,8 +33,23 @@ VSOL_ONU_DIST = f"{VSOL_BASE}.10.1.1.7"     # Distance in meters
 VSOL_ONU_STATUS = f"{VSOL_BASE}.10.1.1.2"   # 1=online, 2=offline, 3=auth-fail
 VSOL_ONU_SN = f"{VSOL_BASE}.10.1.1.5"       # ONU MAC / Serial
 
-# C-Data Enterprise (PEN 34592) & IEEE 802.3ah EPON Standard MIBs
+# C-Data Enterprise (PEN 34592) CLAOS MIBs
 CDATA_BASE = ".1.3.6.1.4.1.34592"
+# C-Data EPON (FD-ONU-MIB)
+CDATA_EPON_ONU_MAC = f"{CDATA_BASE}.1.3.4.1.1.7"            # onuBaseMac (6 bytes MAC)
+CDATA_EPON_ONU_SN = f"{CDATA_BASE}.1.3.4.1.1.3"             # onuFactorySerial
+CDATA_EPON_ONU_STATUS = f"{CDATA_BASE}.1.3.4.1.1.11"        # onuOnLineStatus (1=up, 2=down)
+CDATA_EPON_ONU_RX = f"{CDATA_BASE}.1.3.4.1.1.36"            # onuLaserRxPower (0.1 dBm / Integer)
+CDATA_EPON_ONU_TX = f"{CDATA_BASE}.1.3.4.1.1.37"            # onuLaserTxPower
+CDATA_EPON_AUTH_MAC = f"{CDATA_BASE}.1.3.1.1.2.1.1.2.1.2"  # eponOnuAuthenMacAddress
+
+# C-Data GPON (CDATA-GPON-MIB)
+CDATA_GPON_ONU_SN = f"{CDATA_BASE}.1.5.1.1.2.18.1.1.4"      # gponOnuSn
+CDATA_GPON_ONU_STATUS = f"{CDATA_BASE}.1.5.1.1.2.18.2.1.1"  # gponOnuRunState (1=online, 2=offline)
+CDATA_GPON_ONU_RX = f"{CDATA_BASE}.1.5.1.1.2.18.6.1.4"      # gponOnuOpticalRxPower
+CDATA_GPON_ONU_TX = f"{CDATA_BASE}.1.5.1.1.2.18.6.1.2"      # gponOnuOpticalTxPower
+
+# Standard IEEE 802.3ah EPON MIB
 IEEE_EPON_BASE = ".1.3.6.1.4.1.17409.2.3.4.1.1"  # dot3ExtPonOnuTable
 IEEE_EPON_MAC = f"{IEEE_EPON_BASE}.2"            # MAC Address of ONU
 IEEE_EPON_STATUS = f"{IEEE_EPON_BASE}.3"         # 1=up/online, 2=down
@@ -428,31 +443,49 @@ def fetch_onu_optical(
     snmp_dist_val = None
     query_success = False
 
-    if brand in ("vsol", "cdata"):
-        rx_oid = f"{VSOL_ONU_RX}.{port_num}.{onu_id}"
-        tx_oid = f"{VSOL_ONU_TX}.{port_num}.{onu_id}"
-        dist_oid = f"{VSOL_ONU_DIST}.{port_num}.{onu_id}"
+    if brand in ("vsol", "cdata") or "cdata" in str(olt.get("name") or "").lower():
+        # Candidate OIDs for RX optical power across C-Data EPON, C-Data GPON, VSOL, and IEEE EPON
+        rx_candidates = [
+            f"{CDATA_EPON_ONU_RX}.1.{port_num}.{onu_id}",
+            f"{CDATA_EPON_ONU_RX}.{port_num}.{onu_id}",
+            f"{CDATA_GPON_ONU_RX}.1.1.{port_num}.{onu_id}",
+            f"{CDATA_GPON_ONU_RX}.{port_num}.{onu_id}",
+            f"{VSOL_ONU_RX}.{port_num}.{onu_id}",
+            f"{IEEE_EPON_RX}.{port_num}.{onu_id}",
+        ]
+        res_rx = {}
+        for candidate_rx_oid in rx_candidates:
+            res_rx = snmp_get(host, port, community, candidate_rx_oid, timeout=0.8)
+            if res_rx.get("success") and res_rx.get("value") is not None:
+                break
 
-        res_rx = snmp_get(host, port, community, rx_oid, timeout=1.0)
         if res_rx.get("success") and res_rx.get("value") is not None:
             query_success = True
             raw = res_rx.get("value")
-            # Convert raw value (often stored as 0.1 dBm or 0.0001 mW)
-            if isinstance(raw, (int, float)):
-                if raw < 0:
+            # Parse DisplayString (e.g. "-23.45 dBm") or Integer (0.1 dBm / 0.01 dBm / 0.0001 mW)
+            if isinstance(raw, str):
+                import re
+                m = re.search(r'(-?\d+(?:\.\d+)?)', raw)
+                if m:
+                    snmp_rx_val = round(float(m.group(1)), 2)
+            elif isinstance(raw, (int, float)):
+                if raw < -100:
+                    snmp_rx_val = round(raw / 100.0, 2)
+                elif raw < 0:
                     snmp_rx_val = round(raw / 10.0 if raw < -50 else raw, 2)
                 elif raw > 0:
-                    # In 0.0001 mW -> convert to dBm: 10 * log10(mW)
                     mw = raw * 0.0001
                     snmp_rx_val = round(10 * math.log10(mw), 2)
 
-            res_tx = snmp_get(host, port, community, tx_oid, timeout=0.8)
-            if res_tx.get("success") and isinstance(res_tx.get("value"), (int, float)):
-                snmp_tx_val = round(res_tx["value"] / 10.0 if res_tx["value"] > 10 else res_tx["value"], 2)
+        tx_oid = f"{VSOL_ONU_TX}.{port_num}.{onu_id}"
+        dist_oid = f"{VSOL_ONU_DIST}.{port_num}.{onu_id}"
+        res_tx = snmp_get(host, port, community, tx_oid, timeout=0.8)
+        if res_tx.get("success") and isinstance(res_tx.get("value"), (int, float)):
+            snmp_tx_val = round(res_tx["value"] / 10.0 if res_tx["value"] > 10 else res_tx["value"], 2)
 
-            res_dist = snmp_get(host, port, community, dist_oid, timeout=0.8)
-            if res_dist.get("success") and isinstance(res_dist.get("value"), (int, float)):
-                snmp_dist_val = round(res_dist["value"] / 1000.0, 2)
+        res_dist = snmp_get(host, port, community, dist_oid, timeout=0.8)
+        if res_dist.get("success") and isinstance(res_dist.get("value"), (int, float)):
+            snmp_dist_val = round(res_dist["value"] / 1000.0, 2)
 
     elif brand == "hsgq":
         rx_oid = f"{HSGQ_ONU_RX}.{port_num}.{onu_id}"
@@ -542,28 +575,39 @@ def scan_olt_onus(olt: dict[str, Any]) -> list[dict[str, Any]]:
     if is_live:
         # Determine candidate root OIDs for ONU discovery based on brand
         candidate_oids = []
-        if brand == "cdata":
+        name_lower = str(olt.get("name") or "").lower()
+        if brand == "cdata" or "cdata" in name_lower:
             candidate_oids = [
+                CDATA_EPON_ONU_MAC,                # .1.3.6.1.4.1.34592.1.3.4.1.1.7 (FD-ONU-MIB onuBaseMac)
+                CDATA_EPON_AUTH_MAC,               # .1.3.6.1.4.1.34592.1.3.1.1.2.1.1.2.1.2 (eponOnuAuthenMacAddress)
+                CDATA_GPON_ONU_SN,                 # .1.3.6.1.4.1.34592.1.5.1.1.2.18.1.1.4 (CDATA-GPON-MIB gponOnuSn)
+                CDATA_EPON_ONU_SN,                 # .1.3.6.1.4.1.34592.1.3.4.1.1.3 (onuFactorySerial)
                 IEEE_EPON_MAC,                     # .1.3.6.1.4.1.17409.2.3.4.1.1.2 (IEEE EPON ONU MAC)
-                f"{CDATA_BASE}.1.3.4.1.1.2",       # C-Data EPON ONU MAC Table
-                f"{CDATA_BASE}.1.3.100.12.1.1.2",  # C-Data GPON ONU Serial Table
                 IEEE_EPON_STATUS,                  # .1.3.6.1.4.1.17409.2.3.4.1.1.3 (Status Table)
+                VSOL_ONU_SN,
                 IF_DESCR,                          # Standard interfaces (EPON0/1:1, etc.)
             ]
         elif brand == "vsol":
             candidate_oids = [
                 VSOL_ONU_SN,                       # .1.3.6.1.4.1.37950.1.1.5.10.1.1.5 (ONU Serial/MAC)
                 VSOL_ONU_STATUS,                   # .1.3.6.1.4.1.37950.1.1.5.10.1.1.2
+                CDATA_EPON_ONU_MAC,                # Auto fallback to C-Data FD-ONU-MIB
+                CDATA_EPON_AUTH_MAC,
+                CDATA_GPON_ONU_SN,
+                IEEE_EPON_MAC,
                 IF_DESCR,
             ]
         elif brand == "hsgq":
             candidate_oids = [
                 f"{HSGQ_BASE}.1.3",
                 f"{HSGQ_BASE}.1.1",
+                IEEE_EPON_MAC,
                 IF_DESCR,
             ]
         else:
             candidate_oids = [
+                CDATA_EPON_ONU_MAC,
+                CDATA_GPON_ONU_SN,
                 IEEE_EPON_MAC,
                 VSOL_ONU_SN,
                 IF_DESCR,
@@ -596,7 +640,7 @@ def scan_olt_onus(olt: dict[str, Any]) -> list[dict[str, Any]]:
                 # Case A: Interface description (e.g. EPON0/1:2, gpon-onu_1/1/2:3, PON1:4)
                 if root == IF_DESCR and val:
                     val_str = str(val)
-                    m = re.search(r'(?:epon|gpon|pon)[-_ /]?0?/?(\d+)[:/](\d+)', val_str, re.IGNORECASE)
+                    m = re.search(r'(?:epon|gpon|pon)[-_ /]?(?:0/|1/)?(\d+)[:.](\d+)', val_str, re.IGNORECASE)
                     if m:
                         p_idx = int(m.group(1))
                         o_idx = int(m.group(2))

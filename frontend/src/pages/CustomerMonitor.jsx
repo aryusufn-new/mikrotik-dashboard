@@ -117,6 +117,7 @@ function OltManagementModal({ isOpen, onClose, olts, onReload }) {
   const [activeTab, setActiveTab] = useState('list') // 'list' | 'add'
   const [testingId, setTestingId] = useState(null)
   const [testResult, setTestResult] = useState(null)
+  const [editingOltId, setEditingOltId] = useState(null)
   const [form, setForm] = useState({
     name: '',
     brand: 'cdata',
@@ -148,6 +149,23 @@ function OltManagementModal({ isOpen, onClose, olts, onReload }) {
   }, [isOpen, onClose])
 
   if (!isOpen) return null
+
+  const handleEdit = (olt) => {
+    setEditingOltId(olt.id)
+    setForm({
+      name: olt.name || '',
+      brand: olt.brand || 'cdata',
+      host: olt.host || '192.168.10.1',
+      snmp_port: olt.snmp_port || 161,
+      snmp_community: olt.snmp_community || 'public',
+      telnet_port: olt.telnet_port || 23,
+      telnet_user: olt.telnet_user || 'admin',
+      telnet_pass: olt.telnet_pass || 'admin',
+      pon_ports_count: olt.pon_ports_count || 4,
+      description: olt.description || '',
+    })
+    setActiveTab('add')
+  }
 
   const handleTest = async (id) => {
     setTestingId(id)
@@ -191,13 +209,24 @@ function OltManagementModal({ isOpen, onClose, olts, onReload }) {
     e.preventDefault()
     setSubmitting(true)
     try {
-      await addOlt({
-        ...form,
-        snmp_port: Number(form.snmp_port) || 161,
-        pon_ports_count: Number(form.pon_ports_count) || 4,
-        telnet_port: Number(form.telnet_port) || 23,
-      })
-      alert('OLT berhasil ditambahkan via SNMP!')
+      if (editingOltId) {
+        await updateOlt(editingOltId, {
+          ...form,
+          snmp_port: Number(form.snmp_port) || 161,
+          pon_ports_count: Number(form.pon_ports_count) || 4,
+          telnet_port: Number(form.telnet_port) || 23,
+        })
+        alert('OLT berhasil diperbarui!')
+      } else {
+        await addOlt({
+          ...form,
+          snmp_port: Number(form.snmp_port) || 161,
+          pon_ports_count: Number(form.pon_ports_count) || 4,
+          telnet_port: Number(form.telnet_port) || 23,
+        })
+        alert('OLT berhasil ditambahkan via SNMP!')
+      }
+      setEditingOltId(null)
       setForm({
         name: '',
         brand: 'cdata',
@@ -213,7 +242,7 @@ function OltManagementModal({ isOpen, onClose, olts, onReload }) {
       setActiveTab('list')
       onReload()
     } catch (e) {
-      alert('Gagal menambahkan OLT: ' + e.message)
+      alert(`Gagal ${editingOltId ? 'memperbarui' : 'menambahkan'} OLT: ` + e.message)
     } finally {
       setSubmitting(false)
     }
@@ -264,14 +293,29 @@ function OltManagementModal({ isOpen, onClose, olts, onReload }) {
             Daftar OLT ({olts.length})
           </button>
           <button
-            onClick={() => setActiveTab('add')}
+            onClick={() => {
+              setEditingOltId(null)
+              setForm({
+                name: '',
+                brand: 'cdata',
+                host: '192.168.10.1',
+                snmp_port: 161,
+                snmp_community: 'public',
+                telnet_port: 23,
+                telnet_user: 'admin',
+                telnet_pass: 'admin',
+                pon_ports_count: 4,
+                description: '',
+              })
+              setActiveTab('add')
+            }}
             className={`flex-1 py-1.5 rounded-lg transition ${
               activeTab === 'add'
                 ? 'bg-white dark:bg-slate-900 text-violet-600 dark:text-violet-400 shadow-sm'
                 : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
             }`}
           >
-            + Tambah OLT via SNMP
+            {editingOltId ? 'Edit OLT' : '+ Tambah OLT via SNMP'}
           </button>
         </div>
 
@@ -332,6 +376,13 @@ function OltManagementModal({ isOpen, onClose, olts, onReload }) {
                           <Radio size={12} />
                         )}
                         Scan ONUs
+                      </button>
+                      <button
+                        onClick={() => handleEdit(olt)}
+                        className="p-1 text-slate-400 hover:text-violet-500 transition"
+                        title="Edit OLT"
+                      >
+                        <Edit3 size={15} />
                       </button>
                       <button
                         onClick={() => handleDelete(olt.id, olt.name)}
@@ -543,7 +594,10 @@ function OltManagementModal({ isOpen, onClose, olts, onReload }) {
             <div className="pt-2 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setActiveTab('list')}
+                onClick={() => {
+                  setEditingOltId(null)
+                  setActiveTab('list')
+                }}
                 className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 Batal
@@ -554,7 +608,7 @@ function OltManagementModal({ isOpen, onClose, olts, onReload }) {
                 className="px-5 py-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-semibold flex items-center gap-1.5 shadow"
               >
                 {submitting && <Loader2 size={13} className="animate-spin" />}
-                Simpan OLT
+                {editingOltId ? 'Simpan Perubahan' : 'Simpan OLT'}
               </button>
             </div>
           </form>
