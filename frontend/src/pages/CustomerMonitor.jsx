@@ -959,10 +959,11 @@ function OltManagerModal({ isOpen, onClose, olts, onReload }) {
 }
 
 // ── Modals: Sync PPPoE ─────────────────────────────────────
-function SyncPppoeModal({ isOpen, onClose, onImport, activeRouter }) {
+function SyncPppoeModal({ isOpen, onClose, onImport, activeRouter, onSuccess }) {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState(null)
   const [importingUser, setImportingUser] = useState(null)
+  const [importingAll, setImportingAll] = useState(false)
 
   useEffect(() => {
     if (isOpen) {
@@ -989,8 +990,6 @@ function SyncPppoeModal({ isOpen, onClose, onImport, activeRouter }) {
   }, [isOpen, onClose])
 
   if (!isOpen) return null
-
-  const [importingAll, setImportingAll] = useState(false)
 
   const handleImportSingle = async (item) => {
     setImportingUser(item.pppoe_username)
@@ -1755,6 +1754,7 @@ export default function CustomerMonitor() {
         isOpen={syncModalOpen}
         onClose={() => setSyncModalOpen(false)}
         activeRouter={activeRouter}
+        onSuccess={loadData}
         onImport={async (item) => {
           await addCustomer({ ...item, olt_id: olts?.[0]?.id || null })
           loadData()
