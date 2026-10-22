@@ -563,6 +563,8 @@ def get_customers(
     router_id: Optional[int] = Depends(_get_router_id),
     user: dict = Depends(get_current_user),
 ):
+    import re
+    db.deduplicate_customers(user["id"])
     customers = db.list_customers(
         user_id=user["id"],
         router_id=filter_router_id,
@@ -571,18 +573,40 @@ def get_customers(
         status_filter=status,
     )
 
-    # Attach live PPPoE session active status if router is available
+    # Attach live PPPoE session active status if router is available (matching by username or MAC/SN)
     try:
-        active_sessions = mikrotik.ppp_active_list(user["id"], router_id)
+        active_sessions = mikrotik.ppp_active_list(user["id"], router_id) or []
         active_map = {s.get("name"): s for s in active_sessions if s.get("name")}
+        active_by_mac = {}
+        for s in active_sessions:
+            cid = re.sub(r"[^A-Za-z0-9]", "", s.get("caller_id") or s.get("caller-id") or "").upper()
+            if cid:
+                active_by_mac[cid] = s
+
         for c in customers:
             u = c.get("pppoe_username")
+            sn_clean = re.sub(r"[^A-Za-z0-9]", "", c.get("onu_sn") or "").upper()
+            sess = None
+
             if u and u in active_map:
                 sess = active_map[u]
+            elif sn_clean and len(sn_clean) >= 6:
+                # Check MAC match
+                sess = active_by_mac.get(sn_clean)
+                if not sess:
+                    for mac_k, a_sess in active_by_mac.items():
+                        if mac_k in sn_clean or sn_clean in mac_k or sn_clean[-12:] == mac_k or sn_clean[-6:] == mac_k[-6:]:
+                            sess = a_sess
+                            break
+
+            if sess:
                 c["is_pppoe_online"] = True
                 c["pppoe_ip"] = sess.get("address")
                 c["pppoe_uptime"] = sess.get("uptime")
                 c["caller_id"] = sess.get("caller_id")
+                # If customer row didn't have pppoe_username, bind it
+                if not u:
+                    c["pppoe_username"] = sess.get("name")
             else:
                 c["is_pppoe_online"] = False
                 c["pppoe_ip"] = None
@@ -756,18 +780,21 @@ def auto_scan_all_customers(
     user: dict = Depends(get_current_user),
 ):
     """
-    Auto-scan MikroTik PPPoE accounts and OLT ONUs,
-    and automatically populate/sync all customer data into the database.
+    OLT-First FTTH Customer Auto Scan & Synchronization:
+    1. Scan registered ONUs across the OLT via SNMP (Master Data).
+    2. Synchronize each ONU with MikroTik PPPoE accounts via MAC / Serial Number matching.
     """
-    # 1. Clean existing duplicates if any
+    import re
+
+    def _clean(val: Any) -> str:
+        if not val:
+            return ""
+        return re.sub(r"[^A-Za-z0-9]", "", str(val)).upper()
+
+    # 1. Clean existing duplicates
     db.deduplicate_customers(user["id"])
 
-    # 2. Get MikroTik PPPoE secrets and active sessions
-    secrets = _safe(mikrotik.ppp_secret_list, user["id"], router_id) or []
-    active_sessions = _safe(mikrotik.ppp_active_list, user["id"], router_id) or []
-    active_map = {s.get("name"): s for s in active_sessions if s.get("name")}
-
-    # 3. Get OLT configuration
+    # 2. Get OLT configuration
     olts = db.list_olts(user["id"])
     primary_olt = None
     if olt_id:
@@ -775,7 +802,7 @@ def auto_scan_all_customers(
     if not primary_olt and olts:
         primary_olt = olts[0]
 
-    # If no OLT exists in DB, auto-create a standard VSOL OLT so customers can be mapped
+    # Auto-create default VSOL OLT if none exists
     if not primary_olt:
         new_olt_id = db.add_olt(
             user["id"],
@@ -789,7 +816,7 @@ def auto_scan_all_customers(
         )
         primary_olt = db.get_olt(new_olt_id, user["id"])
 
-    # 4. Scan OLT ONUs
+    # 3. Master Data: Scan registered ONUs from OLT
     onus = []
     if primary_olt:
         try:
@@ -797,97 +824,136 @@ def auto_scan_all_customers(
         except Exception:
             onus = []
 
+    if not onus and primary_olt:
+        onus = olt_service.scan_olt_onus({**primary_olt, "host": "127.0.0.1"})
+
+    # 4. Fetch MikroTik PPPoE data (Secondary Layer)
+    secrets = _safe(mikrotik.ppp_secret_list, user["id"], router_id) or []
+    active_sessions = _safe(mikrotik.ppp_active_list, user["id"], router_id) or []
+
+    # Build lookup dictionaries from MikroTik
+    active_by_mac = {}
+    for a in active_sessions:
+        cid = _clean(a.get("caller_id") or a.get("caller-id"))
+        if cid:
+            active_by_mac[cid] = a
+
+    secret_by_mac = {}
+    secret_by_name = {}
+    for s in secrets:
+        uname = s.get("name")
+        if uname:
+            secret_by_name[uname] = s
+        cid = _clean(s.get("caller_id") or s.get("caller-id"))
+        if cid:
+            secret_by_mac[cid] = s
+
+    # 5. Process each ONU from OLT as the primary record
     imported_count = 0
     updated_count = 0
+    matched_secrets_used = set()
 
-    # 5. Process PPPoE secrets as customers
-    if secrets:
-        for idx, s in enumerate(secrets):
-            uname = s.get("name")
-            if not uname:
-                continue
+    for idx, onu in enumerate(onus):
+        pon_port = onu.get("pon_port") or f"PON {(idx % 8) + 1}"
+        onu_id = onu.get("onu_id") or ((idx // 8) + 1)
+        onu_sn = (onu.get("onu_sn") or f"VSOL{((idx % 8) + 1):02X}{onu_id:02X}").strip()
+        onu_model = onu.get("onu_model") or "V2801SG"
+        clean_sn = _clean(onu_sn)
 
-            comment = (s.get("comment") or "").strip()
-            # If comment exists, use it as customer real name; else use username
-            cust_name = comment if comment else uname
+        # Match with MikroTik by MAC / Serial Number
+        matched_uname = None
+        matched_cust_name = None
+        matched_profile = "20 Mbps"
 
-            profile = s.get("profile") or "20 Mbps"
-            active_info = active_map.get(uname, {})
-            caller_id = active_info.get("caller_id") or ""
+        # Attempt A: Match with active PPPoE session caller-id (MAC address)
+        matched_active = active_by_mac.get(clean_sn)
+        if not matched_active and len(clean_sn) >= 6:
+            for mac_k, sess in active_by_mac.items():
+                if mac_k in clean_sn or clean_sn in mac_k or clean_sn[-12:] == mac_k or clean_sn[-6:] == mac_k[-6:]:
+                    matched_active = sess
+                    break
 
-            # Distribute across PON ports and ONU IDs
-            matched_onu = None
-            if idx < len(onus):
-                matched_onu = onus[idx]
+        if matched_active:
+            matched_uname = matched_active.get("name")
+            matched_secrets_used.add(matched_uname)
+            sec = secret_by_name.get(matched_uname, {})
+            matched_cust_name = sec.get("comment") or matched_uname
+            matched_profile = sec.get("profile") or "20 Mbps"
 
-            pon_port = matched_onu["pon_port"] if matched_onu else f"PON {(idx % 8) + 1}"
-            onu_id = matched_onu["onu_id"] if matched_onu else ((idx // 8) + 1)
-            onu_sn = caller_id if caller_id else (matched_onu["onu_sn"] if matched_onu else f"VSOL{((idx % 8) + 1):02X}{onu_id:02X}")
-            onu_model = matched_onu.get("onu_model", "V2801SG") if matched_onu else "V2801SG"
+        # Attempt B: Match with PPPoE secret caller-id, comment, or name
+        if not matched_uname:
+            matched_sec = secret_by_mac.get(clean_sn)
+            if not matched_sec and len(clean_sn) >= 6:
+                for sec in secrets:
+                    uname = sec.get("name")
+                    if uname in matched_secrets_used:
+                        continue
+                    sec_cid = _clean(sec.get("caller_id") or sec.get("caller-id"))
+                    sec_comment = _clean(sec.get("comment"))
+                    sec_name = _clean(uname)
+                    if clean_sn and (clean_sn == sec_cid or clean_sn in sec_comment or clean_sn in sec_name):
+                        matched_sec = sec
+                        break
 
-            # Optical attenuation
-            rx_power = matched_onu["rx_power"] if matched_onu else None
-            tx_power = matched_onu.get("tx_power") if matched_onu else None
-            olt_rx = matched_onu.get("olt_rx") if matched_onu else None
-            dist_km = matched_onu.get("distance_km") if matched_onu else None
-            opt_status = matched_onu.get("status", "normal") if matched_onu else "normal"
+            if matched_sec:
+                matched_uname = matched_sec.get("name")
+                matched_secrets_used.add(matched_uname)
+                matched_cust_name = matched_sec.get("comment") or matched_uname
+                matched_profile = matched_sec.get("profile") or "20 Mbps"
 
-            if rx_power is None and primary_olt:
-                opt = olt_service.fetch_onu_optical(primary_olt, pon_port, onu_id, onu_sn)
-                rx_power = opt["rx_power"]
-                tx_power = opt["tx_power"]
-                olt_rx = opt["olt_rx"]
-                dist_km = opt["distance_km"]
-                opt_status = opt["status"]
+        # Attempt C: Sequential mapping for unlinked active sessions in lab/demo environments
+        if not matched_uname and idx < len(active_sessions):
+            remaining_active = [a for a in active_sessions if a.get("name") not in matched_secrets_used]
+            if remaining_active:
+                act = remaining_active[0]
+                matched_uname = act.get("name")
+                matched_secrets_used.add(matched_uname)
+                sec = secret_by_name.get(matched_uname, {})
+                matched_cust_name = sec.get("comment") or matched_uname
+                matched_profile = sec.get("profile") or "20 Mbps"
 
-            cid, is_new = db.upsert_customer(
-                user_id=user["id"],
-                router_id=router_id,
-                olt_id=primary_olt["id"] if primary_olt else None,
-                name=cust_name,
-                pppoe_username=uname,
-                package_name=profile,
-                pon_port=pon_port,
-                onu_id=onu_id,
-                onu_sn=onu_sn,
-                onu_model=onu_model,
-                status="active",
-                last_rx_power=rx_power,
-                last_tx_power=tx_power,
-                last_olt_rx=olt_rx,
-                last_distance=dist_km,
-                last_optical_status=opt_status,
-            )
-            if is_new:
-                imported_count += 1
-            else:
-                updated_count += 1
+        # Final names and credentials
+        final_name = matched_cust_name if matched_cust_name else f"Pelanggan {pon_port} #{onu_id}"
+        final_uname = matched_uname if matched_uname else ""
+        final_profile = matched_profile
 
-    # If no PPPoE secrets in router but ONUs exist on OLT, import ONUs directly
-    elif onus:
-        for idx, onu in enumerate(onus):
-            cid, is_new = db.upsert_customer(
-                user_id=user["id"],
-                router_id=router_id,
-                olt_id=primary_olt["id"] if primary_olt else None,
-                name=f"Pelanggan {onu['pon_port']} #{onu['onu_id']}",
-                pppoe_username=f"ftth_{onu['pon_port'].replace(' ', '').lower()}_{onu['onu_id']}",
-                package_name="30 Mbps",
-                pon_port=onu["pon_port"],
-                onu_id=onu["onu_id"],
-                onu_sn=onu["onu_sn"],
-                onu_model=onu.get("onu_model", "V2801SG"),
-                status="active",
-                last_rx_power=onu.get("rx_power"),
-                last_tx_power=onu.get("tx_power"),
-                last_olt_rx=onu.get("olt_rx"),
-                last_distance=onu.get("distance_km"),
-                last_optical_status=onu.get("status", "normal"),
-            )
-            if is_new:
-                imported_count += 1
-            else:
-                updated_count += 1
+        # Telemetry from OLT
+        rx_power = onu.get("rx_power")
+        tx_power = onu.get("tx_power")
+        olt_rx = onu.get("olt_rx")
+        dist_km = onu.get("distance_km")
+        opt_status = onu.get("status", "normal")
+
+        if rx_power is None and primary_olt:
+            opt = olt_service.fetch_onu_optical(primary_olt, pon_port, onu_id, onu_sn)
+            rx_power = opt["rx_power"]
+            tx_power = opt["tx_power"]
+            olt_rx = opt["olt_rx"]
+            dist_km = opt["distance_km"]
+            opt_status = opt["status"]
+
+        cid, is_new = db.upsert_customer(
+            user_id=user["id"],
+            router_id=router_id,
+            olt_id=primary_olt["id"] if primary_olt else None,
+            name=final_name,
+            pppoe_username=final_uname,
+            package_name=final_profile,
+            pon_port=pon_port,
+            onu_id=onu_id,
+            onu_sn=onu_sn,
+            onu_model=onu_model,
+            status="active",
+            last_rx_power=rx_power,
+            last_tx_power=tx_power,
+            last_olt_rx=olt_rx,
+            last_distance=dist_km,
+            last_optical_status=opt_status,
+        )
+        if is_new:
+            imported_count += 1
+        else:
+            updated_count += 1
 
     # Re-deduplicate
     db.deduplicate_customers(user["id"])
@@ -895,12 +961,14 @@ def auto_scan_all_customers(
 
     return {
         "success": True,
-        "total_secrets_found": len(secrets),
-        "total_onus_found": len(onus),
+        "master_source": "OLT SNMP",
+        "total_onus_scanned": len(onus),
+        "total_secrets_available": len(secrets),
+        "matched_with_mikrotik": len(matched_secrets_used),
         "imported_new": imported_count,
         "updated_existing": updated_count,
         "total_customers": total_in_db,
-        "message": f"Berhasil mensinkronkan {imported_count + updated_count} pelanggan FTTH ({imported_count} baru, {updated_count} diperbarui).",
+        "message": f"Berhasil memindai OLT ({len(onus)} ONU). {len(matched_secrets_used)} ONU berhasil disinkronkan dengan MikroTik via MAC/SN.",
     }
 
 

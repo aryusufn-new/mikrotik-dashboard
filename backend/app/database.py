@@ -679,10 +679,25 @@ def add_customer(user_id: int, **kwargs) -> int:
 
 
 def deduplicate_customers(user_id: int) -> int:
-    """Removes duplicate customers with identical pppoe_username for the same user, keeping newest row."""
+    """Removes duplicate customer entries for the same user, prioritizing OLT mapping (olt_id, pon_port, onu_id) and pppoe_username."""
     conn = _conn()
     try:
         with conn.cursor() as cur:
+            # 1. Deduplicate by OLT, PON port, and ONU ID
+            cur.execute("""
+                DELETE FROM customers
+                WHERE user_id = %s
+                  AND olt_id IS NOT NULL
+                  AND id NOT IN (
+                      SELECT MAX(id)
+                      FROM customers
+                      WHERE user_id = %s AND olt_id IS NOT NULL
+                      GROUP BY olt_id, pon_port, onu_id
+                  )
+            """, (user_id, user_id))
+            del1 = cur.rowcount
+
+            # 2. Deduplicate by PPPoE username if provided
             cur.execute("""
                 DELETE FROM customers
                 WHERE user_id = %s
@@ -697,43 +712,71 @@ def deduplicate_customers(user_id: int) -> int:
                       GROUP BY pppoe_username
                   )
             """, (user_id, user_id))
-            deleted = cur.rowcount
+            del2 = cur.rowcount
+
             conn.commit()
-            return deleted
+            return del1 + del2
     finally:
         _put(conn)
 
 
 def upsert_customer(user_id: int, **kwargs) -> tuple[int, bool]:
-    """Inserts a new customer or updates an existing one matching pppoe_username."""
+    """
+    Inserts or updates a customer with OLT as master record.
+    Matches primarily on (user_id, olt_id, pon_port, onu_id), then onu_sn, then pppoe_username.
+    """
+    olt_id = kwargs.get("olt_id")
+    pon_port = kwargs.get("pon_port") or "PON 1"
+    onu_id = kwargs.get("onu_id") or 1
+    onu_sn = (kwargs.get("onu_sn") or "").strip()
     uname = (kwargs.get("pppoe_username") or "").strip()
+
     conn = _conn()
     try:
         with conn.cursor() as cur:
-            if uname:
+            row = None
+            # 1. Match by (olt_id, pon_port, onu_id)
+            if olt_id and pon_port and onu_id:
+                cur.execute(
+                    "SELECT id FROM customers WHERE user_id = %s AND olt_id = %s AND pon_port = %s AND onu_id = %s ORDER BY id DESC LIMIT 1",
+                    (user_id, olt_id, pon_port, onu_id),
+                )
+                row = cur.fetchone()
+
+            # 2. Match by ONU Serial Number / MAC
+            if not row and onu_sn:
+                cur.execute(
+                    "SELECT id FROM customers WHERE user_id = %s AND onu_sn = %s ORDER BY id DESC LIMIT 1",
+                    (user_id, onu_sn),
+                )
+                row = cur.fetchone()
+
+            # 3. Match by PPPoE Username if provided
+            if not row and uname:
                 cur.execute(
                     "SELECT id FROM customers WHERE user_id = %s AND pppoe_username = %s ORDER BY id DESC LIMIT 1",
                     (user_id, uname),
                 )
                 row = cur.fetchone()
-                if row:
-                    cid = row[0]
-                    allowed = {
-                        "router_id", "olt_id", "name", "phone", "address",
-                        "odp_name", "pon_port", "onu_id",
-                        "onu_sn", "onu_model", "package_name", "status",
-                        "last_rx_power", "last_tx_power", "last_olt_rx",
-                        "last_distance", "last_optical_status", "last_checked_at"
-                    }
-                    updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
-                    if updates:
-                        set_clause = ", ".join(f"{k}=%s" for k in updates)
-                        values = list(updates.values()) + [cid, user_id]
-                        cur.execute(f"UPDATE customers SET {set_clause} WHERE id=%s AND user_id=%s", values)
-                        conn.commit()
-                    return cid, False
 
-            # Otherwise, insert new customer
+            if row:
+                cid = row[0]
+                allowed = {
+                    "router_id", "olt_id", "name", "phone", "address",
+                    "odp_name", "pppoe_username", "pon_port", "onu_id",
+                    "onu_sn", "onu_model", "package_name", "status",
+                    "last_rx_power", "last_tx_power", "last_olt_rx",
+                    "last_distance", "last_optical_status", "last_checked_at"
+                }
+                updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
+                if updates:
+                    set_clause = ", ".join(f"{k}=%s" for k in updates)
+                    values = list(updates.values()) + [cid, user_id]
+                    cur.execute(f"UPDATE customers SET {set_clause} WHERE id=%s AND user_id=%s", values)
+                    conn.commit()
+                return cid, False
+
+            # Otherwise, insert as new customer
             return add_customer(user_id, **kwargs), True
     finally:
         _put(conn)
