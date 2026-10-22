@@ -894,6 +894,7 @@ def auto_scan_all_customers(
         imported_count = 0
         updated_count = 0
         matched_secrets_used = set()
+        valid_customer_ids = []
 
         for idx, onu in enumerate(onus):
             pon_port = str(onu.get("pon_port") or f"PON {(idx % 8) + 1}")
@@ -955,20 +956,8 @@ def auto_scan_all_customers(
                         matched_cust_name = matched_sec.get("comment") or matched_uname
                         matched_profile = matched_sec.get("profile") or "20 Mbps"
 
-            # Attempt C: Sequential mapping for unlinked active sessions in lab/demo environments
-            if not matched_uname and idx < len(active_sessions):
-                remaining_active = [a for a in active_sessions if a.get("name") not in matched_secrets_used]
-                if remaining_active:
-                    act = remaining_active[0]
-                    matched_uname = act.get("name")
-                    if matched_uname:
-                        matched_secrets_used.add(matched_uname)
-                        sec = secret_by_name.get(matched_uname, {})
-                        matched_cust_name = sec.get("comment") or matched_uname
-                        matched_profile = sec.get("profile") or "20 Mbps"
-
-            # Final names and credentials
-            final_name = matched_cust_name if matched_cust_name else f"Pelanggan {pon_port} #{onu_id_int}"
+            # Final names and credentials (strictly OLT-first)
+            final_name = matched_cust_name if matched_cust_name else f"ONU {pon_port} #{onu_id_int}"
             final_uname = matched_uname if matched_uname else ""
             final_profile = matched_profile
 
@@ -1009,12 +998,24 @@ def auto_scan_all_customers(
                     last_distance=dist_km,
                     last_optical_status=opt_status,
                 )
+                valid_customer_ids.append(cid)
                 if is_new:
                     imported_count += 1
                 else:
                     updated_count += 1
             except Exception as e:
                 print(f"Error upserting customer {final_name}:", e)
+
+        # 7. Clean up orphan/stale customer records that do not exist on the OLT
+        deleted_orphans = 0
+        try:
+            deleted_orphans = db.clean_unmatched_customers(
+                user["id"],
+                primary_olt["id"] if primary_olt else None,
+                valid_customer_ids,
+            )
+        except Exception as e:
+            print("Warning: clean_unmatched_customers error:", e)
 
         # Re-deduplicate
         try:
@@ -1026,14 +1027,15 @@ def auto_scan_all_customers(
 
         return {
             "success": True,
-            "master_source": "OLT SNMP",
+            "master_source": "OLT Physical ONUs",
             "total_onus_scanned": len(onus),
             "total_secrets_available": len(secrets),
             "matched_with_mikrotik": len(matched_secrets_used),
             "imported_new": imported_count,
             "updated_existing": updated_count,
+            "deleted_orphans": deleted_orphans,
             "total_customers": total_in_db,
-            "message": f"Berhasil memindai OLT ({len(onus)} ONU). {len(matched_secrets_used)} ONU berhasil disinkronkan dengan MikroTik via MAC/SN.",
+            "message": f"Berhasil sinkronisasi OLT ({len(onus)} ONU fisik). {len(matched_secrets_used)} terhubung ke PPPoE MikroTik. {deleted_orphans} data sisa tanpa ONU dibersihkan.",
         }
     except Exception as exc:
         traceback.print_exc()

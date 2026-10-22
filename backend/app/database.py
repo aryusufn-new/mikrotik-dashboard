@@ -720,16 +720,47 @@ def deduplicate_customers(user_id: int) -> int:
         _put(conn)
 
 
+def clean_unmatched_customers(user_id: int, olt_id: int | None, valid_customer_ids: list[int]) -> int:
+    """Removes customer records that do not belong to the active OLT scan."""
+    conn = _conn()
+    try:
+        with conn.cursor() as cur:
+            if valid_customer_ids:
+                if olt_id:
+                    cur.execute(
+                        "DELETE FROM customers WHERE user_id = %s AND (olt_id = %s OR olt_id IS NULL) AND id NOT IN %s",
+                        (user_id, olt_id, tuple(valid_customer_ids)),
+                    )
+                else:
+                    cur.execute(
+                        "DELETE FROM customers WHERE user_id = %s AND id NOT IN %s",
+                        (user_id, tuple(valid_customer_ids)),
+                    )
+            else:
+                if olt_id:
+                    cur.execute(
+                        "DELETE FROM customers WHERE user_id = %s AND (olt_id = %s OR olt_id IS NULL)",
+                        (user_id, olt_id),
+                    )
+                else:
+                    cur.execute("DELETE FROM customers WHERE user_id = %s", (user_id,))
+            deleted = cur.rowcount
+            conn.commit()
+            return deleted
+    finally:
+        _put(conn)
+
+
 def upsert_customer(user_id: int, **kwargs) -> tuple[int, bool]:
     """
     Inserts or updates a customer with OLT as master record.
-    Matches primarily on (user_id, olt_id, pon_port, onu_id), then onu_sn, then pppoe_username.
+    Matches primarily on (user_id, olt_id, pon_port, onu_id) or (user_id, onu_sn).
+    Never merges purely by pppoe_username to avoid conflating physical ONUs.
     """
     olt_id = kwargs.get("olt_id")
     pon_port = kwargs.get("pon_port") or "PON 1"
     onu_id = kwargs.get("onu_id") or 1
     onu_sn = (kwargs.get("onu_sn") or "").strip()
-    uname = (kwargs.get("pppoe_username") or "").strip()
 
     conn = _conn()
     try:
@@ -748,14 +779,6 @@ def upsert_customer(user_id: int, **kwargs) -> tuple[int, bool]:
                 cur.execute(
                     "SELECT id FROM customers WHERE user_id = %s AND onu_sn = %s ORDER BY id DESC LIMIT 1",
                     (user_id, onu_sn),
-                )
-                row = cur.fetchone()
-
-            # 3. Match by PPPoE Username if provided
-            if not row and uname:
-                cur.execute(
-                    "SELECT id FROM customers WHERE user_id = %s AND pppoe_username = %s ORDER BY id DESC LIMIT 1",
-                    (user_id, uname),
                 )
                 row = cur.fetchone()
 
