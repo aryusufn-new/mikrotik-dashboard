@@ -35,6 +35,7 @@ import {
 import {
   addCustomer,
   addOlt,
+  autoScanCustomers,
   checkAllOptical,
   checkCustomerOptical,
   deleteCustomer,
@@ -44,6 +45,7 @@ import {
   getOlts,
   getPppActive,
   getPppSecrets,
+  importAllPppoe,
   scanOltOnus,
   syncPppoe,
   testOltConnection,
@@ -775,6 +777,21 @@ function OltManagerModal({ isOpen, onClose, olts, onReload }) {
                           </div>
                         ))}
                       </div>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await autoScanCustomers(olt.id)
+                            alert(res.message || 'Berhasil mensinkronkan semua ONU ke daftar pelanggan!')
+                            onReload()
+                          } catch (e) {
+                            alert('Gagal impor ONU: ' + e.message)
+                          }
+                        }}
+                        className="w-full mt-2 py-1.5 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-sm"
+                      >
+                        <Zap size={13} className="text-amber-300" />
+                        {t.btnImporSemuaOnu || 'Impor Semua ONU ke Pelanggan'} ({scanResult.items.length})
+                      </button>
                     </div>
                   )}
                 </div>
@@ -973,6 +990,8 @@ function SyncPppoeModal({ isOpen, onClose, onImport, activeRouter }) {
 
   if (!isOpen) return null
 
+  const [importingAll, setImportingAll] = useState(false)
+
   const handleImportSingle = async (item) => {
     setImportingUser(item.pppoe_username)
     try {
@@ -992,6 +1011,20 @@ function SyncPppoeModal({ isOpen, onClose, onImport, activeRouter }) {
       alert('Gagal impor: ' + e.message)
     } finally {
       setImportingUser(null)
+    }
+  }
+
+  const handleImportAll = async () => {
+    setImportingAll(true)
+    try {
+      const res = await autoScanCustomers()
+      alert(res.message || 'Semua akun PPPoE berhasil disinkronkan ke pelanggan!')
+      onSuccess?.()
+      onClose()
+    } catch (e) {
+      alert('Gagal impor massal: ' + e.message)
+    } finally {
+      setImportingAll(false)
     }
   }
 
@@ -1060,9 +1093,21 @@ function SyncPppoeModal({ isOpen, onClose, onImport, activeRouter }) {
             </div>
 
             <div>
-              <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 mb-2">
-                Akun PPPoE yang Belum Masuk Database Pelanggan:
-              </h4>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  Akun PPPoE yang Belum Masuk Database Pelanggan:
+                </h4>
+                {data?.unregistered_secrets?.length > 0 && (
+                  <button
+                    onClick={handleImportAll}
+                    disabled={importingAll}
+                    className="px-3 py-1.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition disabled:opacity-50"
+                  >
+                    {importingAll ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} className="text-amber-300" />}
+                    {t.btnImportAllPppoe || 'Impor Semua Sekaligus'} ({data.unregistered_secrets.length})
+                  </button>
+                )}
+              </div>
 
               {data?.unregistered_secrets?.length === 0 ? (
                 <div className="text-center py-6 text-emerald-600 dark:text-emerald-400 text-xs font-semibold bg-emerald-50/50 dark:bg-emerald-950/20 rounded-xl border border-emerald-200/40">
@@ -1148,6 +1193,20 @@ export default function CustomerMonitor() {
   // Live Optical Checking state
   const [checkingId, setCheckingId] = useState(null)
   const [checkingAll, setCheckingAll] = useState(false)
+  const [scanningAll, setScanningAll] = useState(false)
+
+  const handleAutoScan = async () => {
+    setScanningAll(true)
+    try {
+      const res = await autoScanCustomers(selectedOlt ? Number(selectedOlt) : null)
+      alert(res.message || 'Auto scan selesai!')
+      await loadData()
+    } catch (e) {
+      alert('Gagal auto scan: ' + (e?.response?.data?.detail || e.message))
+    } finally {
+      setScanningAll(false)
+    }
+  }
 
   const loadData = async () => {
     try {
@@ -1260,6 +1319,20 @@ export default function CustomerMonitor() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={handleAutoScan}
+            disabled={scanningAll}
+            className="px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center gap-2 shadow-md shadow-violet-500/20 transition hover:shadow-lg disabled:opacity-60"
+            title={t.autoScanDesc || 'Auto scan semua akun PPPoE & ONU OLT'}
+          >
+            {scanningAll ? (
+              <Loader2 size={14} className="animate-spin text-white" />
+            ) : (
+              <Zap size={14} className="text-amber-300" />
+            )}
+            {t.btnAutoScan || 'Auto Scan Pelanggan'}
+          </button>
+
           <button
             onClick={handleCheckAllOptical}
             disabled={checkingAll}
@@ -1450,8 +1523,16 @@ export default function CustomerMonitor() {
             <span className="text-xs">{t.loadingCustomerData || 'Memuat data pelanggan & telemetri OLT...'}</span>
           </div>
         ) : customers.length === 0 ? (
-          <div className="py-16 text-center text-slate-400 text-sm">
-            {t.noCustomersFound || 'Tidak ada pelanggan yang cocok dengan kriteria pencarian atau filter.'}
+          <div className="py-16 text-center text-slate-400 text-sm flex flex-col items-center justify-center gap-3">
+            <p>{t.noCustomersFound || 'Tidak ada pelanggan yang cocok dengan kriteria pencarian atau filter.'}</p>
+            <button
+              onClick={handleAutoScan}
+              disabled={scanningAll}
+              className="px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center gap-2 shadow-md shadow-violet-500/20 transition hover:shadow-lg disabled:opacity-60"
+            >
+              {scanningAll ? <Loader2 size={14} className="animate-spin text-white" /> : <Zap size={14} className="text-amber-300" />}
+              {t.btnAutoScan || 'Mulai Auto Scan Sekarang'}
+            </button>
           </div>
         ) : (
           <div className="overflow-x-auto">

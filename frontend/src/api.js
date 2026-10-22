@@ -121,6 +121,9 @@ export const deleteCustomer = (id) => http.delete(`/api/customers/${id}`).then(r
 export const checkCustomerOptical = (id) => http.post(`/api/customers/${id}/optical`).then(r => r.data)
 export const checkAllOptical = (olt_id = null) => http.post(`/api/customers/check-optical-all${olt_id ? `?olt_id=${olt_id}` : ''}`).then(r => r.data)
 export const syncPppoe = () => http.post('/api/customers/sync-pppoe').then(r => r.data)
+export const autoScanCustomers = (olt_id = null) => http.post(`/api/customers/auto-scan${olt_id ? `?olt_id=${olt_id}` : ''}`).then(r => r.data)
+export const importAllPppoe = () => http.post('/api/customers/import-all-pppoe').then(r => r.data)
+
 
 
 

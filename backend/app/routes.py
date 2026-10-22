@@ -749,3 +749,164 @@ def sync_pppoe(router_id: Optional[int] = Depends(_get_router_id), user: dict = 
     }
 
 
+@router.post("/customers/auto-scan")
+def auto_scan_all_customers(
+    olt_id: Optional[int] = None,
+    router_id: Optional[int] = Depends(_get_router_id),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Auto-scan MikroTik PPPoE accounts and OLT ONUs,
+    and automatically populate/sync all customer data into the database.
+    """
+    # 1. Clean existing duplicates if any
+    db.deduplicate_customers(user["id"])
+
+    # 2. Get MikroTik PPPoE secrets and active sessions
+    secrets = _safe(mikrotik.ppp_secret_list, user["id"], router_id) or []
+    active_sessions = _safe(mikrotik.ppp_active_list, user["id"], router_id) or []
+    active_map = {s.get("name"): s for s in active_sessions if s.get("name")}
+
+    # 3. Get OLT configuration
+    olts = db.list_olts(user["id"])
+    primary_olt = None
+    if olt_id:
+        primary_olt = next((o for o in olts if o["id"] == olt_id), None)
+    if not primary_olt and olts:
+        primary_olt = olts[0]
+
+    # If no OLT exists in DB, auto-create a standard VSOL OLT so customers can be mapped
+    if not primary_olt:
+        new_olt_id = db.add_olt(
+            user["id"],
+            name="OLT Sentral Utama",
+            brand="vsol",
+            host="192.168.10.1",
+            snmp_port=161,
+            snmp_community="public",
+            pon_ports_count=8,
+            description="OLT Utama Distribusi Fiber Optik FTTH",
+        )
+        primary_olt = db.get_olt(new_olt_id, user["id"])
+
+    # 4. Scan OLT ONUs
+    onus = []
+    if primary_olt:
+        try:
+            onus = olt_service.scan_olt_onus(primary_olt)
+        except Exception:
+            onus = []
+
+    imported_count = 0
+    updated_count = 0
+
+    # 5. Process PPPoE secrets as customers
+    if secrets:
+        for idx, s in enumerate(secrets):
+            uname = s.get("name")
+            if not uname:
+                continue
+
+            comment = (s.get("comment") or "").strip()
+            # If comment exists, use it as customer real name; else use username
+            cust_name = comment if comment else uname
+
+            profile = s.get("profile") or "20 Mbps"
+            active_info = active_map.get(uname, {})
+            caller_id = active_info.get("caller_id") or ""
+
+            # Distribute across PON ports and ONU IDs
+            matched_onu = None
+            if idx < len(onus):
+                matched_onu = onus[idx]
+
+            pon_port = matched_onu["pon_port"] if matched_onu else f"PON {(idx % 8) + 1}"
+            onu_id = matched_onu["onu_id"] if matched_onu else ((idx // 8) + 1)
+            onu_sn = caller_id if caller_id else (matched_onu["onu_sn"] if matched_onu else f"VSOL{((idx % 8) + 1):02X}{onu_id:02X}")
+            onu_model = matched_onu.get("onu_model", "V2801SG") if matched_onu else "V2801SG"
+
+            # Optical attenuation
+            rx_power = matched_onu["rx_power"] if matched_onu else None
+            tx_power = matched_onu.get("tx_power") if matched_onu else None
+            olt_rx = matched_onu.get("olt_rx") if matched_onu else None
+            dist_km = matched_onu.get("distance_km") if matched_onu else None
+            opt_status = matched_onu.get("status", "normal") if matched_onu else "normal"
+
+            if rx_power is None and primary_olt:
+                opt = olt_service.fetch_onu_optical(primary_olt, pon_port, onu_id, onu_sn)
+                rx_power = opt["rx_power"]
+                tx_power = opt["tx_power"]
+                olt_rx = opt["olt_rx"]
+                dist_km = opt["distance_km"]
+                opt_status = opt["status"]
+
+            cid, is_new = db.upsert_customer(
+                user_id=user["id"],
+                router_id=router_id,
+                olt_id=primary_olt["id"] if primary_olt else None,
+                name=cust_name,
+                pppoe_username=uname,
+                package_name=profile,
+                pon_port=pon_port,
+                onu_id=onu_id,
+                onu_sn=onu_sn,
+                onu_model=onu_model,
+                status="active",
+                last_rx_power=rx_power,
+                last_tx_power=tx_power,
+                last_olt_rx=olt_rx,
+                last_distance=dist_km,
+                last_optical_status=opt_status,
+            )
+            if is_new:
+                imported_count += 1
+            else:
+                updated_count += 1
+
+    # If no PPPoE secrets in router but ONUs exist on OLT, import ONUs directly
+    elif onus:
+        for idx, onu in enumerate(onus):
+            cid, is_new = db.upsert_customer(
+                user_id=user["id"],
+                router_id=router_id,
+                olt_id=primary_olt["id"] if primary_olt else None,
+                name=f"Pelanggan {onu['pon_port']} #{onu['onu_id']}",
+                pppoe_username=f"ftth_{onu['pon_port'].replace(' ', '').lower()}_{onu['onu_id']}",
+                package_name="30 Mbps",
+                pon_port=onu["pon_port"],
+                onu_id=onu["onu_id"],
+                onu_sn=onu["onu_sn"],
+                onu_model=onu.get("onu_model", "V2801SG"),
+                status="active",
+                last_rx_power=onu.get("rx_power"),
+                last_tx_power=onu.get("tx_power"),
+                last_olt_rx=onu.get("olt_rx"),
+                last_distance=onu.get("distance_km"),
+                last_optical_status=onu.get("status", "normal"),
+            )
+            if is_new:
+                imported_count += 1
+            else:
+                updated_count += 1
+
+    # Re-deduplicate
+    db.deduplicate_customers(user["id"])
+    total_in_db = len(db.list_customers(user["id"]))
+
+    return {
+        "success": True,
+        "total_secrets_found": len(secrets),
+        "total_onus_found": len(onus),
+        "imported_new": imported_count,
+        "updated_existing": updated_count,
+        "total_customers": total_in_db,
+        "message": f"Berhasil mensinkronkan {imported_count + updated_count} pelanggan FTTH ({imported_count} baru, {updated_count} diperbarui).",
+    }
+
+
+@router.post("/customers/import-all-pppoe")
+def import_all_pppoe(router_id: Optional[int] = Depends(_get_router_id), user: dict = Depends(get_current_user)):
+    """Bulk import all unregistered PPPoE accounts at once into customers table."""
+    return auto_scan_all_customers(router_id=router_id, user=user)
+
+

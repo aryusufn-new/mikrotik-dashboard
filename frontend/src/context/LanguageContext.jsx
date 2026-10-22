@@ -174,6 +174,12 @@ export const translations = {
     needInspection: 'Perlu Cek',
     noCustomersFound: 'Tidak ada pelanggan yang cocok dengan kriteria pencarian atau filter.',
     loadingCustomerData: 'Memuat data pelanggan & telemetri OLT...',
+    btnAutoScan: 'Auto Scan Pelanggan',
+    autoScanDesc: 'Pindai otomatis semua akun PPPoE MikroTik & OLT ke database pelanggan',
+    btnImportAllPppoe: 'Impor Semua Sekaligus',
+    btnImporSemuaOnu: 'Impor Semua ONU ke Pelanggan',
+    autoScanSuccess: 'Auto scan berhasil! Semua data pelanggan telah disinkronkan.',
+    autoScanEmptyPrompt: 'Temukan & Sinkronkan Semua Pelanggan: Sistem mendeteksi akun di MikroTik & OLT. Klik Auto Scan untuk memuat semua data pelanggan secara otomatis.',
   },
   en: {
     // Header & Brand
@@ -348,6 +354,12 @@ export const translations = {
     needInspection: 'Needs Check',
     noCustomersFound: 'No customers found matching search criteria or filters.',
     loadingCustomerData: 'Loading customer data & OLT telemetry...',
+    btnAutoScan: 'Auto Scan Customers',
+    autoScanDesc: 'Automatically scan all MikroTik PPPoE accounts & OLT ONUs into the customer list',
+    btnImportAllPppoe: 'Import All at Once',
+    btnImporSemuaOnu: 'Import All ONUs to Customers',
+    autoScanSuccess: 'Auto scan successful! All customer data has been synchronized.',
+    autoScanEmptyPrompt: 'Discover & Sync All Customers: System detects accounts on MikroTik & OLT. Click Auto Scan to automatically load all customer data.',
   },
 }
 
