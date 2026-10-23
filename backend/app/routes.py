@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Header, Request, Body
+from fastapi import APIRouter, Depends, HTTPException, Header, Request, Body, Query
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from typing import Optional, Any
@@ -789,7 +789,8 @@ def sync_pppoe(router_id: Optional[int] = Depends(_get_router_id), user: dict = 
 def auto_scan_all_customers(
     payload: Optional[dict] = Body(default=None),
     olt_id: Optional[int] = None,
-    router_id: Optional[int] = Depends(_get_router_id),
+    router_id: Optional[int] = Query(default=None),
+    header_router_id: Optional[int] = Depends(_get_router_id),
     user: dict = Depends(get_current_user),
 ):
     """
@@ -813,21 +814,23 @@ def auto_scan_all_customers(
             print("Warning: deduplicate_customers error:", e)
 
         # 2. Validate router_id to avoid foreign key errors
+        target_router_id = router_id if router_id is not None else header_router_id
         valid_router_id = None
-        if router_id:
+        if target_router_id:
             try:
-                rc = db.get_router_config(user["id"], router_id)
+                rc = db.get_router_by_id(target_router_id, user["id"])
                 if rc:
-                    valid_router_id = router_id
-            except Exception:
-                pass
+                    valid_router_id = target_router_id
+            except Exception as e:
+                print("Warning: get_router_by_id error:", e)
+
         if not valid_router_id:
             try:
                 routers = db.list_routers(user["id"])
                 if routers:
                     valid_router_id = routers[0]["id"]
-            except Exception:
-                pass
+            except Exception as e:
+                print("Warning: list_routers fallback error:", e)
 
         # 3. Get OLT configuration
         olts = db.list_olts(user["id"])
@@ -924,17 +927,19 @@ def auto_scan_all_customers(
         # 5. Fetch MikroTik PPPoE data (Secondary Layer) safely
         secrets = []
         active_sessions = []
+        secret_fetch_error = None
         if valid_router_id:
             try:
                 secrets = mikrotik.ppp_secret_list(user["id"], valid_router_id) or []
             except Exception as e:
-                print("Warning: failed to fetch ppp secrets from MikroTik:", e)
+                secret_fetch_error = str(e)
+                print(f"Warning: failed to fetch ppp secrets from MikroTik (router #{valid_router_id}):", e)
                 secrets = []
 
             try:
                 active_sessions = mikrotik.ppp_active_list(user["id"], valid_router_id) or []
             except Exception as e:
-                print("Warning: failed to fetch active ppp sessions from MikroTik:", e)
+                print(f"Warning: failed to fetch active ppp sessions from MikroTik (router #{valid_router_id}):", e)
                 active_sessions = []
 
         # Build lookup dictionaries from MikroTik
@@ -1175,6 +1180,19 @@ def auto_scan_all_customers(
 
         total_in_db = len(db.list_customers(user["id"]))
 
+        # Detailed feedback message for the operator
+        if not valid_router_id:
+            status_msg = f"Sinkronisasi OLT selesai ({len(onus)} ONU). PERHATIAN: Tidak ada router MikroTik yang terhubung/dipilih, sehingga 0 akun PPPoE tertaut. Pilih router aktif di navbar atas."
+        elif secret_fetch_error:
+            status_msg = f"Sinkronisasi OLT selesai ({len(onus)} ONU), namun gagal membaca akun PPPoE dari MikroTik (Router #{valid_router_id}): {secret_fetch_error}. Pastikan API MikroTik aktif."
+        elif len(secrets) == 0:
+            status_msg = f"Sinkronisasi OLT selesai ({len(onus)} ONU). Ditemukan 0 akun PPPoE di MikroTik (Router #{valid_router_id}). Pastikan akun PPPoE sudah dibuat di PPP > Secrets MikroTik."
+        elif len(matched_secrets_used) == 0:
+            sample_u = ", ".join([str(s.get("name")) for s in secrets[:4]])
+            status_msg = f"Sinkronisasi OLT selesai ({len(onus)} ONU). Ditemukan {len(secrets)} akun PPPoE di MikroTik #{valid_router_id}, tetapi belum ada yang cocok dengan nama/SN ONU (contoh akun di MikroTik: {sample_u}). Gunakan tombol 'Sync PPPoE' per baris untuk menautkan manual."
+        else:
+            status_msg = f"Berhasil! {len(matched_secrets_used)} dari {len(onus)} ONU terhubung ke akun PPPoE MikroTik ({len(secrets)} akun PPPoE tersedia di Router #{valid_router_id})."
+
         return {
             "success": True,
             "master_source": "OLT Physical ONUs",
@@ -1186,7 +1204,7 @@ def auto_scan_all_customers(
             "updated_existing": updated_count,
             "deleted_orphans": deleted_orphans,
             "total_customers": total_in_db,
-            "message": f"Berhasil sinkronisasi OLT ({len(onus)} ONU fisik terdeteksi di {len(port_breakdown)} port PON). {len(matched_secrets_used)} terhubung ke PPPoE MikroTik. {deleted_orphans} data tanpa ONU dibersihkan.",
+            "message": status_msg,
         }
     except Exception as exc:
         traceback.print_exc()

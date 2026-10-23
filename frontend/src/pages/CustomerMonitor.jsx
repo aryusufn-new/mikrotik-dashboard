@@ -1065,7 +1065,7 @@ function SyncOnuToPppoeModal({ isOpen, onClose, customer, secrets, activeSession
 // ── Main Customer & FTTH Management Page ───────────────────
 export default function CustomerMonitor() {
   const { t } = useLanguage()
-  const { activeRouter } = useRouter()
+  const { activeRouter, activeRouterId } = useRouter()
 
   const [customers, setCustomers] = useState([])
   const [olts, setOlts] = useState([])
@@ -1165,7 +1165,7 @@ export default function CustomerMonitor() {
     setScanningOlt(true)
     setOltTestResult(null)
     try {
-      const res = await autoScanCustomers(selectedOlt ? Number(selectedOlt) : null, { force_scan: true })
+      const res = await autoScanCustomers(selectedOlt ? Number(selectedOlt) : null, { force_scan: true }, activeRouterId)
       alert(res.message || 'Scan OLT selesai!')
       await loadData()
     } catch (e) {
@@ -1179,7 +1179,7 @@ export default function CustomerMonitor() {
   const handleAutoSyncAll = async () => {
     setAutoSyncingAll(true)
     try {
-      const res = await autoScanCustomers(selectedOlt ? Number(selectedOlt) : null, { sync_only: true })
+      const res = await autoScanCustomers(selectedOlt ? Number(selectedOlt) : null, { sync_only: true }, activeRouterId)
       alert(res.message || 'Sinkronisasi selesai!')
       await loadData()
     } catch (e) {
