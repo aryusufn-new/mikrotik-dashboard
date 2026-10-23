@@ -964,6 +964,8 @@ def auto_scan_all_customers(
         updated_count = 0
         matched_secrets_used = set()
         valid_customer_ids = []
+        preview_items = []
+        is_preview = bool(payload and payload.get("preview"))
 
         # Existing PPPoE links keyed by ONU SN (preserve manual links on re-import)
         existing_uname_by_sn = {}
@@ -999,6 +1001,9 @@ def auto_scan_all_customers(
             matched_uname = None
             matched_cust_name = None
             matched_profile = "20 Mbps"
+            match_reason = "none"
+            confidence = "none"
+            confidence_label = "⚪ Belum Ada Akun Cocok"
 
             # Check existing username for this customer
             existing_uname = onu.get("existing_uname")
@@ -1020,6 +1025,9 @@ def auto_scan_all_customers(
                     sec = secret_by_name.get(act_uname, {})
                     matched_cust_name = sec.get("comment") or clean_desc or act_uname
                     matched_profile = sec.get("profile") or "20 Mbps"
+                    match_reason = "mac_match"
+                    confidence = "high"
+                    confidence_label = "🟢 100% Cocok MAC Hardware"
 
             # Attempt B: Match with PPPoE secret caller-id, name, or comment (SN match)
             if not matched_uname and clean_sn:
@@ -1042,6 +1050,9 @@ def auto_scan_all_customers(
                         matched_uname = uname
                         matched_cust_name = matched_sec.get("comment") or clean_desc or uname
                         matched_profile = matched_sec.get("profile") or "20 Mbps"
+                        match_reason = "sn_match"
+                        confidence = "high"
+                        confidence_label = "🟢 100% Cocok Serial Number"
 
             # Attempt C: Match by extracted Customer Name & Description (Smart Name Matcher)
             if not matched_uname and base_name:
@@ -1084,6 +1095,14 @@ def auto_scan_all_customers(
                     matched_uname = uname
                     matched_cust_name = best_sec.get("comment") or clean_desc or uname
                     matched_profile = best_sec.get("profile") or "20 Mbps"
+                    if best_score >= 80:
+                        match_reason = "exact_name"
+                        confidence = "high"
+                        confidence_label = f"🟢 {best_score}% Nama Sama Persis"
+                    else:
+                        match_reason = "token_overlap"
+                        confidence = "medium"
+                        confidence_label = f"🟡 {best_score}% Nama Mirip (Cek Dulu)"
 
             # Attempt D: Fallback to existing username if already linked
             if not matched_uname and existing_uname:
@@ -1092,6 +1111,9 @@ def auto_scan_all_customers(
                 if sec:
                     matched_cust_name = sec.get("comment") or clean_desc or existing_uname
                     matched_profile = sec.get("profile") or "20 Mbps"
+                match_reason = "existing"
+                confidence = "high"
+                confidence_label = "🔵 Sudah Tertaut Sebelumnya"
 
             if matched_uname:
                 matched_secrets_used.add(matched_uname)
@@ -1108,6 +1130,26 @@ def auto_scan_all_customers(
 
             final_uname = matched_uname if matched_uname else ""
             final_profile = matched_profile
+
+            if is_preview:
+                preview_items.append({
+                    "customer_id": onu.get("existing_id"),
+                    "pon_port": pon_port,
+                    "onu_id": onu_id_int,
+                    "onu_sn": onu_sn,
+                    "onu_model": onu_model,
+                    "onu_name": onu_raw_name,
+                    "clean_desc": clean_desc,
+                    "current_pppoe": existing_uname or "",
+                    "matched_uname": matched_uname or "",
+                    "matched_cust_name": final_name,
+                    "matched_profile": final_profile,
+                    "match_reason": match_reason,
+                    "confidence": confidence,
+                    "confidence_label": confidence_label,
+                    "selected": bool(matched_uname and match_reason != "none"),
+                })
+                continue
 
             # Telemetry from OLT
             rx_power = onu.get("rx_power")
@@ -1153,6 +1195,23 @@ def auto_scan_all_customers(
                     updated_count += 1
             except Exception as e:
                 print(f"Error upserting customer {final_name}:", e)
+
+        # Early return for Preview mode (never touches DB)
+        if is_preview:
+            high_count = sum(1 for it in preview_items if it.get("confidence") == "high")
+            medium_count = sum(1 for it in preview_items if it.get("confidence") == "medium")
+            unmatched_count = sum(1 for it in preview_items if it.get("confidence") == "none")
+            return {
+                "success": True,
+                "preview": True,
+                "total_onus": len(preview_items),
+                "high_count": high_count,
+                "medium_count": medium_count,
+                "unmatched_count": unmatched_count,
+                "total_secrets_available": len(secrets),
+                "router_id": valid_router_id,
+                "items": preview_items,
+            }
 
         # 7. Clean up orphan/stale customer records that do not exist on the OLT (skip during sync_only)
         deleted_orphans = 0
@@ -1215,5 +1274,64 @@ def auto_scan_all_customers(
 def import_all_pppoe(router_id: Optional[int] = Depends(_get_router_id), user: dict = Depends(get_current_user)):
     """Bulk import all unregistered PPPoE accounts at once into customers table."""
     return auto_scan_all_customers(router_id=router_id, user=user)
+
+
+@router.post("/customers/sync-apply")
+def apply_sync_bindings(
+    payload: dict = Body(...),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Apply user-approved PPPoE bindings from the preview dialog.
+    """
+    import re
+    bindings = payload.get("bindings") or []
+    if not bindings:
+        return {"success": True, "applied": 0, "message": "Tidak ada binding yang dipilih."}
+
+    applied = 0
+    all_custs = db.list_customers(user["id"])
+    cust_by_sn = {}
+    for c in all_custs:
+        raw_sn = c.get("onu_sn")
+        if raw_sn:
+            sn_clean = re.sub(r"[^A-Za-z0-9]", "", str(raw_sn)).upper()
+            if sn_clean:
+                cust_by_sn[sn_clean] = c
+
+    for item in bindings:
+        cid = item.get("customer_id")
+        raw_sn = item.get("onu_sn")
+        sn_clean = re.sub(r"[^A-Za-z0-9]", "", str(raw_sn)).upper() if raw_sn else ""
+        uname = (item.get("pppoe_username") or item.get("matched_uname") or "").strip()
+        cust_name = (item.get("name") or item.get("matched_cust_name") or "").strip()
+        pkg = (item.get("package_name") or item.get("matched_profile") or "").strip()
+        rid = item.get("router_id")
+
+        if not cid and sn_clean and sn_clean in cust_by_sn:
+            cid = cust_by_sn[sn_clean]["id"]
+
+        if cid:
+            updates = {}
+            if uname:
+                updates["pppoe_username"] = uname
+            if cust_name:
+                updates["name"] = cust_name
+            if pkg:
+                updates["package_name"] = pkg
+            if rid:
+                updates["router_id"] = rid
+            if updates:
+                ok = db.update_customer(cid, user["id"], **updates)
+                if ok:
+                    applied += 1
+
+    return {
+        "success": True,
+        "applied": applied,
+        "total": len(bindings),
+        "message": f"Berhasil menautkan {applied} akun PPPoE ke data ONU pelanggan.",
+    }
+
 
 

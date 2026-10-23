@@ -129,7 +129,17 @@ export const autoScanCustomers = (olt_id = null, payload = null, router_id = nul
   const qs = params.toString() ? `?${params.toString()}` : ''
   return http.post(`/api/customers/auto-scan${qs}`, payload || {}, { timeout: 60000 }).then(r => r.data)
 }
+export const getSyncPreview = (olt_id = null, router_id = null) => {
+  const params = new URLSearchParams()
+  if (olt_id) params.append('olt_id', olt_id)
+  const rid = router_id || localStorage.getItem('activeRouterId')
+  if (rid) params.append('router_id', rid)
+  const qs = params.toString() ? `?${params.toString()}` : ''
+  return http.post(`/api/customers/auto-scan${qs}`, { preview: true, sync_only: true }, { timeout: 60000 }).then(r => r.data)
+}
+export const applySyncBindings = (bindings) => http.post('/api/customers/sync-apply', { bindings }).then(r => r.data)
 export const importAllPppoe = () => http.post('/api/customers/import-all-pppoe').then(r => r.data)
+
 
 
 

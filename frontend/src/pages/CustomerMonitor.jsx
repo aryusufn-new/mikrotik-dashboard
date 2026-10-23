@@ -12,6 +12,7 @@ import {
   Copy,
   Edit3,
   ExternalLink,
+  Eye,
   Layers,
   Link as LinkIcon,
   Loader2,
@@ -36,6 +37,7 @@ import {
 import {
   addCustomer,
   addOlt,
+  applySyncBindings,
   autoScanCustomers,
   checkAllOptical,
   checkCustomerOptical,
@@ -46,6 +48,7 @@ import {
   getOlts,
   getPppActive,
   getPppSecrets,
+  getSyncPreview,
   scanOltOnus,
   testOltConnection,
   updateCustomer,
@@ -1062,6 +1065,442 @@ function SyncOnuToPppoeModal({ isOpen, onClose, customer, secrets, activeSession
   )
 }
 
+// ── Modals: Preview & Confirmation for PPPoE Auto-Sync ───────
+function SyncPreviewModal({ isOpen, onClose, previewData, onApplySuccess }) {
+  if (!isOpen || !previewData) return null
+
+  const [items, setItems] = useState(previewData.items || [])
+  const [selectedSns, setSelectedSns] = useState(() => {
+    const init = new Set()
+    ;(previewData.items || []).forEach((it) => {
+      if (it.selected && it.matched_uname) init.add(it.onu_sn)
+    })
+    return init
+  })
+  const [filterTab, setFilterTab] = useState('all') // all, high, medium, none
+  const [searchTerm, setSearchTerm] = useState('')
+  const [applying, setApplying] = useState(false)
+  const [editingSn, setEditingSn] = useState(null)
+  const [editUname, setEditUname] = useState('')
+
+  useEffect(() => {
+    if (previewData?.items) {
+      setItems(previewData.items)
+      const init = new Set()
+      previewData.items.forEach((it) => {
+        if (it.selected && it.matched_uname) init.add(it.onu_sn)
+      })
+      setSelectedSns(init)
+    }
+  }, [previewData])
+
+  const filteredItems = useMemo(() => {
+    return items.filter((it) => {
+      if (filterTab === 'high' && it.confidence !== 'high') return false
+      if (filterTab === 'medium' && it.confidence !== 'medium') return false
+      if (filterTab === 'none' && it.confidence !== 'none') return false
+
+      if (searchTerm) {
+        const q = searchTerm.toLowerCase()
+        const matchSn = (it.onu_sn || '').toLowerCase().includes(q)
+        const matchName = (it.onu_name || '').toLowerCase().includes(q)
+        const matchDesc = (it.clean_desc || '').toLowerCase().includes(q)
+        const matchUname = (it.matched_uname || '').toLowerCase().includes(q)
+        const matchCust = (it.matched_cust_name || '').toLowerCase().includes(q)
+        if (!matchSn && !matchName && !matchDesc && !matchUname && !matchCust) return false
+      }
+      return true
+    })
+  }, [items, filterTab, searchTerm])
+
+  const toggleSelect = (sn) => {
+    setSelectedSns((prev) => {
+      const next = new Set(prev)
+      if (next.has(sn)) next.delete(sn)
+      else next.add(sn)
+      return next
+    })
+  }
+
+  const selectAllHigh = () => {
+    const next = new Set(selectedSns)
+    items.forEach((it) => {
+      if (it.confidence === 'high' && it.matched_uname) next.add(it.onu_sn)
+    })
+    setSelectedSns(next)
+  }
+
+  const selectAllVisible = () => {
+    const next = new Set(selectedSns)
+    filteredItems.forEach((it) => {
+      if (it.matched_uname) next.add(it.onu_sn)
+    })
+    setSelectedSns(next)
+  }
+
+  const deselectAll = () => {
+    setSelectedSns(new Set())
+  }
+
+  const startEditUname = (it) => {
+    setEditingSn(it.onu_sn)
+    setEditUname(it.matched_uname || '')
+  }
+
+  const saveEditUname = (sn) => {
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.onu_sn === sn) {
+          const newU = editUname.trim()
+          return {
+            ...it,
+            matched_uname: newU,
+            confidence: newU ? 'high' : 'none',
+            confidence_label: newU ? '🟢 Diisi Manual oleh Operator' : '⚪ Belum Ada Akun',
+          }
+        }
+        return it
+      })
+    )
+    if (editUname.trim()) {
+      setSelectedSns((prev) => new Set(prev).add(sn))
+    }
+    setEditingSn(null)
+  }
+
+  const handleApply = async () => {
+    const bindings = items
+      .filter((it) => selectedSns.has(it.onu_sn) && it.matched_uname)
+      .map((it) => ({
+        customer_id: it.customer_id,
+        onu_sn: it.onu_sn,
+        pppoe_username: it.matched_uname,
+        name: it.matched_cust_name,
+        package_name: it.matched_profile,
+        router_id: previewData.router_id,
+      }))
+
+    if (bindings.length === 0) {
+      alert('Pilih minimal 1 ONU yang memiliki akun PPPoE untuk diterapkan.')
+      return
+    }
+
+    setApplying(true)
+    try {
+      const res = await applySyncBindings(bindings)
+      alert(res.message || `Berhasil menautkan ${res.applied} akun PPPoE!`)
+      if (onApplySuccess) onApplySuccess()
+      onClose()
+    } catch (e) {
+      alert('Gagal menerapkan sinkronisasi: ' + (e?.response?.data?.detail || e.message))
+    } finally {
+      setApplying(false)
+    }
+  }
+
+  const totalSelected = items.filter((it) => selectedSns.has(it.onu_sn) && it.matched_uname).length
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-start justify-between bg-slate-50/50 dark:bg-slate-800/30">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="p-2 rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                <Eye size={20} />
+              </span>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
+                Preview & Konfirmasi Auto-Sync PPPoE
+              </h3>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Verifikasi usulan kecocokan akun PPPoE MikroTik ke ONU OLT sebelum disimpan ke database.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Stats Pill Bar */}
+        <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium">
+              Total ONU: <b>{previewData.total_onus || 0}</b>
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium border border-emerald-500/20">
+              🟢 High Confidence: <b>{previewData.high_count || 0}</b>
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium border border-amber-500/20">
+              🟡 Perlu Verifikasi: <b>{previewData.medium_count || 0}</b>
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-medium">
+              ⚪ Belum Cocok: <b>{previewData.unmatched_count || 0}</b>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={selectAllHigh}
+              className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline font-semibold"
+            >
+              Pilih High Saja
+            </button>
+            <span className="text-slate-300 dark:text-slate-700">|</span>
+            <button
+              type="button"
+              onClick={selectAllVisible}
+              className="text-xs text-violet-600 dark:text-violet-400 hover:underline font-semibold"
+            >
+              Pilih Semua
+            </button>
+            <span className="text-slate-300 dark:text-slate-700">|</span>
+            <button
+              type="button"
+              onClick={deselectAll}
+              className="text-xs text-rose-500 hover:underline font-semibold"
+            >
+              Batal Semua
+            </button>
+          </div>
+        </div>
+
+        {/* Filter Tabs & Search */}
+        <div className="px-5 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-1 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+            <button
+              onClick={() => setFilterTab('all')}
+              className={`px-3 py-1.5 rounded-lg font-medium transition ${
+                filterTab === 'all'
+                  ? 'bg-violet-600 text-white shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              Semua ({items.length})
+            </button>
+            <button
+              onClick={() => setFilterTab('high')}
+              className={`px-3 py-1.5 rounded-lg font-medium transition ${
+                filterTab === 'high'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              🟢 High ({previewData.high_count || 0})
+            </button>
+            <button
+              onClick={() => setFilterTab('medium')}
+              className={`px-3 py-1.5 rounded-lg font-medium transition ${
+                filterTab === 'medium'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              🟡 Review ({previewData.medium_count || 0})
+            </button>
+            <button
+              onClick={() => setFilterTab('none')}
+              className={`px-3 py-1.5 rounded-lg font-medium transition ${
+                filterTab === 'none'
+                  ? 'bg-slate-600 text-white shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              ⚪ Belum Cocok ({previewData.unmatched_count || 0})
+            </button>
+          </div>
+
+          <div className="relative w-full sm:w-64">
+            <Search size={14} className="absolute left-2.5 top-2.5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Cari SN, nama, username..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-violet-500"
+            />
+          </div>
+        </div>
+
+        {/* Preview Table */}
+        <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 min-h-[300px]">
+          {filteredItems.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 text-xs">
+              Tidak ada data ONU yang sesuai dengan filter atau pencarian ini.
+            </div>
+          ) : (
+            <table className="w-full text-left border-collapse text-xs">
+              <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800/90 backdrop-blur-sm z-10 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-100 dark:border-slate-800">
+                <tr>
+                  <th className="p-3 w-10 text-center">Pilih</th>
+                  <th className="p-3">Port / ONU SN</th>
+                  <th className="p-3">Nama ONU di OLT</th>
+                  <th className="p-3">Usulan Akun PPPoE MikroTik</th>
+                  <th className="p-3">Tingkat Keyakinan</th>
+                  <th className="p-3">Paket</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {filteredItems.map((it) => {
+                  const isChecked = selectedSns.has(it.onu_sn)
+                  const isEditing = editingSn === it.onu_sn
+                  return (
+                    <tr
+                      key={it.onu_sn}
+                      className={`hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition ${
+                        isChecked ? 'bg-violet-50/20 dark:bg-violet-950/10' : ''
+                      }`}
+                    >
+                      <td className="p-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          disabled={!it.matched_uname && !isEditing}
+                          onChange={() => toggleSelect(it.onu_sn)}
+                          className="rounded border-slate-300 text-violet-600 focus:ring-violet-500 cursor-pointer disabled:opacity-30"
+                        />
+                      </td>
+
+                      <td className="p-3">
+                        <div className="font-semibold text-slate-800 dark:text-slate-200">
+                          {it.pon_port} #{it.onu_id}
+                        </div>
+                        <div className="font-mono text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                          <span>{it.onu_sn}</span>
+                          <button
+                            onClick={() => navigator.clipboard.writeText(it.onu_sn)}
+                            title="Copy SN"
+                            className="hover:text-slate-800 dark:hover:text-slate-200"
+                          >
+                            <Copy size={11} />
+                          </button>
+                        </div>
+                      </td>
+
+                      <td className="p-3">
+                        <div className="font-medium text-slate-800 dark:text-white">
+                          {it.clean_desc || it.onu_name || '-'}
+                        </div>
+                        {it.clean_desc && it.onu_name !== it.clean_desc && (
+                          <div className="text-[10px] text-slate-400 truncate max-w-xs" title={it.onu_name}>
+                            Raw: {it.onu_name}
+                          </div>
+                        )}
+                      </td>
+
+                      <td className="p-3">
+                        {isEditing ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="text"
+                              value={editUname}
+                              onChange={(e) => setEditUname(e.target.value)}
+                              placeholder="Ketik username PPPoE..."
+                              className="px-2 py-1 rounded border border-violet-500 text-xs bg-white dark:bg-slate-800 text-slate-800 dark:text-white w-40"
+                              autoFocus
+                            />
+                            <button
+                              onClick={() => saveEditUname(it.onu_sn)}
+                              className="p-1 rounded bg-emerald-600 text-white hover:bg-emerald-700"
+                            >
+                              <Check size={12} />
+                            </button>
+                            <button
+                              onClick={() => setEditingSn(null)}
+                              className="p-1 rounded bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            {it.matched_uname ? (
+                              <span className="font-mono font-semibold text-violet-600 dark:text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded">
+                                {it.matched_uname}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 italic">Belum ada akun cocok</span>
+                            )}
+                            <button
+                              onClick={() => startEditUname(it)}
+                              title="Edit / Ganti Akun PPPoE Manual"
+                              className="text-slate-400 hover:text-violet-500 p-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+                            >
+                              <Edit3 size={12} />
+                            </button>
+                          </div>
+                        )}
+                        {it.current_pppoe && it.current_pppoe !== it.matched_uname && (
+                          <div className="text-[10px] text-amber-500 mt-0.5">
+                            Sebelumnya: {it.current_pppoe}
+                          </div>
+                        )}
+                      </td>
+
+                      <td className="p-3">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                            it.confidence === 'high'
+                              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                              : it.confidence === 'medium'
+                              ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700'
+                          }`}
+                        >
+                          {it.confidence_label}
+                        </span>
+                      </td>
+
+                      <td className="p-3 text-slate-600 dark:text-slate-300 font-medium">
+                        {it.matched_profile || '20 Mbps'}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Modal Footer */}
+        <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="text-xs text-slate-500 dark:text-slate-400">
+            Terpilih:{' '}
+            <b className="text-violet-600 dark:text-violet-400 text-sm">{totalSelected}</b> dari{' '}
+            <b>{items.length}</b> ONU untuk ditautkan ke Router #{previewData.router_id || 'Aktif'}.
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={applying}
+              className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={handleApply}
+              disabled={applying || totalSelected === 0}
+              className="px-5 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-semibold flex items-center gap-1.5 text-xs shadow-md transition disabled:opacity-50"
+            >
+              {applying ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+              Terapkan Sinkronisasi ({totalSelected} Terpilih)
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 // ── Main Customer & FTTH Management Page ───────────────────
 export default function CustomerMonitor() {
   const { t } = useLanguage()
@@ -1091,6 +1530,8 @@ export default function CustomerMonitor() {
   // Modals state
   const [oltModalOpen, setOltModalOpen] = useState(false)
   const [syncTargetCustomer, setSyncTargetCustomer] = useState(null)
+  const [syncPreviewOpen, setSyncPreviewOpen] = useState(false)
+  const [syncPreviewData, setSyncPreviewData] = useState(null)
 
   // Quick Action Loading states
   const [testingOlt, setTestingOlt] = useState(false)
@@ -1175,15 +1616,19 @@ export default function CustomerMonitor() {
     }
   }
 
-  // Step 4 & 5: Auto Sync all unlinked ONUs matching MikroTik MAC/SN & Customer Name
+  // Step 4 & 5: Auto Sync all unlinked ONUs: Open Preview modal first
   const handleAutoSyncAll = async () => {
     setAutoSyncingAll(true)
     try {
-      const res = await autoScanCustomers(selectedOlt ? Number(selectedOlt) : null, { sync_only: true }, activeRouterId)
-      alert(res.message || 'Sinkronisasi selesai!')
-      await loadData()
+      const res = await getSyncPreview(selectedOlt ? Number(selectedOlt) : null, activeRouterId)
+      if (res && res.preview) {
+        setSyncPreviewData(res)
+        setSyncPreviewOpen(true)
+      } else {
+        alert(res.message || 'Tidak ada data untuk disinkronkan.')
+      }
     } catch (e) {
-      alert('Gagal sinkronisasi: ' + e.message)
+      alert('Gagal mengambil preview sinkronisasi: ' + (e?.response?.data?.detail || e.message))
     } finally {
       setAutoSyncingAll(false)
     }
@@ -1852,6 +2297,14 @@ export default function CustomerMonitor() {
         secrets={secrets}
         activeSessions={activeSessions}
         onSyncSuccess={loadData}
+      />
+
+      {/* ── Modals: Preview & Konfirmasi Auto-Sync PPPoE ── */}
+      <SyncPreviewModal
+        isOpen={syncPreviewOpen}
+        onClose={() => setSyncPreviewOpen(false)}
+        previewData={syncPreviewData}
+        onApplySuccess={loadData}
       />
     </div>
   )
