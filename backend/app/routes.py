@@ -866,6 +866,8 @@ def auto_scan_all_customers(
             if not desc:
                 return "", ""
             s = str(desc).strip()
+            if s.upper() in ("N/A", "NA", "NULL", "NONE", "-"):
+                return "", ""
             s = re.sub(
                 r'^(?:gpon|epon|pon|ont|onu)[-_ /]?(?:\d+[/:_])?(?:\d+[/:_])?\d*\s*(?:onu\s*\d+)?[:.\s#_-]*',
                 '',
@@ -873,8 +875,7 @@ def auto_scan_all_customers(
                 flags=re.IGNORECASE,
             ).strip(" _-#")
             s = re.sub(r'^(?:onu\s*)?#?\d+[:.\s#_-]*', '', s, flags=re.IGNORECASE).strip(" _-#")
-            s = re.sub(r'^[A-Za-z]\d+[-_]', '', s).strip(" _-#")
-            if not s or s.isdigit():
+            if not s or s.isdigit() or s.upper() in ("N/A", "NA", "NULL", "NONE"):
                 return "", ""
             clean_desc = s
             base_name = re.sub(r'\s*[-_]\s*[A-Za-z0-9]{2,4}$', '', clean_desc).strip(" _-#")
@@ -997,7 +998,11 @@ def auto_scan_all_customers(
             onu_raw_name = onu.get("description") or onu.get("onu_name") or onu.get("name") or ""
             clean_desc, base_name = _extract_customer_name(onu_raw_name)
 
-            # Match with MikroTik: Priority 1 (MAC), Priority 2 (SN), Priority 3 (Name/Tokens)
+            # Match with MikroTik:
+            # Priority 1: OLT Description <-> MikroTik Username & Comment (Operator primary rule)
+            # Priority 2: Active Session MAC <-> ONU SN (Hardware-Level 100%)
+            # Priority 3: Secret Caller-ID / Comment <-> ONU SN (Hardware-Level 100%)
+            # Priority 4: Existing Link preserved
             matched_uname = None
             matched_cust_name = None
             matched_profile = "20 Mbps"
@@ -1010,26 +1015,128 @@ def auto_scan_all_customers(
             if not existing_uname and onu_sn:
                 existing_uname = existing_uname_by_sn.get(clean_sn) or ""
 
-            # Attempt A: Match with active PPPoE session caller-id (MAC address)
-            matched_active = active_by_mac.get(clean_sn)
-            if not matched_active and len(clean_sn) >= 6:
-                for mac_k, sess in active_by_mac.items():
-                    if mac_k in clean_sn or clean_sn in mac_k or clean_sn[-12:] == mac_k or clean_sn[-6:] == mac_k[-6:]:
-                        matched_active = sess
-                        break
+            # ─── Priority 1: OLT Description <-> MikroTik (Username or Comment) ───
+            target_desc = clean_desc or onu_raw_name
+            if target_desc and target_desc.upper() not in ("N/A", "NA", "NULL", "NONE", "-"):
+                norm_td = _norm(target_desc)
+                desc_parts = [p.strip() for p in re.split(r'[-_/\s]+', target_desc) if p.strip()]
 
-            if matched_active:
-                act_uname = matched_active.get("name")
-                if act_uname and act_uname not in matched_secrets_used:
-                    matched_uname = act_uname
-                    sec = secret_by_name.get(act_uname, {})
-                    matched_cust_name = sec.get("comment") or clean_desc or act_uname
-                    matched_profile = sec.get("profile") or "20 Mbps"
-                    match_reason = "mac_match"
-                    confidence = "high"
-                    confidence_label = "🟢 100% Cocok MAC Hardware"
+                # Find code tokens (e.g. C027240406, ID102, C102)
+                code_tokens = []
+                for p in desc_parts:
+                    np = _norm(p)
+                    if len(np) >= 3 and (any(c.isdigit() for c in np) or len(desc_parts) == 1):
+                        code_tokens.append(np)
 
-            # Attempt B: Match with PPPoE secret caller-id, name, or comment (SN match)
+                # Name part (non-code tokens joined)
+                name_tokens = [p for p in desc_parts if _norm(p) not in code_tokens]
+                norm_name_part = _norm(" ".join(name_tokens)) if name_tokens else ""
+
+                best_desc_sec = None
+                best_desc_score = 0
+                best_desc_reason = ""
+                best_desc_label = ""
+
+                for sec in secrets:
+                    uname = sec.get("name")
+                    if not uname or uname in matched_secrets_used:
+                        continue
+                    comment = sec.get("comment") or ""
+                    nu = _norm(uname)
+                    nc = _norm(comment)
+
+                    score = 0
+                    reason = ""
+                    label = ""
+
+                    # 1. Exact match with username or comment (100%)
+                    if norm_td and (norm_td == nu):
+                        score = 100
+                        reason = "exact_username"
+                        label = f"🟢 100% Cocok Username ({uname})"
+                    elif norm_td and (norm_td == nc):
+                        score = 100
+                        reason = "exact_comment"
+                        label = f"🟢 100% Cocok Comment ({comment})"
+
+                    # 2. Code prefix match (e.g. C027240406 in username or comment)
+                    elif code_tokens:
+                        for ct in code_tokens:
+                            if len(ct) >= 4:
+                                if ct == nu or (len(ct) >= 5 and ct in nu):
+                                    score = 98
+                                    reason = "code_username"
+                                    label = f"🟢 100% Cocok Kode ID ({ct.upper()}) di Username"
+                                    break
+                                elif ct == nc or (len(ct) >= 5 and ct in nc):
+                                    score = 98
+                                    reason = "code_comment"
+                                    label = f"🟢 100% Cocok Kode ID ({ct.upper()}) di Comment"
+                                    break
+
+                    # 3. Name part exact or substring in description
+                    if not score:
+                        if norm_name_part and len(norm_name_part) >= 4 and (norm_name_part == nu or norm_name_part == nc):
+                            score = 92
+                            reason = "name_exact"
+                            label = f"🟢 92% Nama ({uname}) Cocok Persis"
+                        elif len(nu) >= 4 and nu in norm_td:
+                            score = 90
+                            reason = "username_in_desc"
+                            label = f"🟢 90% Username ({uname}) Ada di Deskripsi OLT"
+                        elif len(nc) >= 4 and nc in norm_td:
+                            score = 90
+                            reason = "comment_in_desc"
+                            label = f"🟢 90% Comment ({comment}) Ada di Deskripsi OLT"
+
+                    # 4. Token overlap / partial match
+                    if not score and len(nu) >= 4:
+                        if nu in norm_td or (len(norm_td) >= 4 and norm_td in nu):
+                            score = 75
+                            reason = "token_overlap"
+                            label = f"🟡 75% Nama ({uname}) Mirip Deskripsi OLT"
+                        elif len(nc) >= 4 and (nc in norm_td or norm_td in nc):
+                            score = 70
+                            reason = "token_overlap_comment"
+                            label = f"🟡 70% Comment ({comment}) Mirip Deskripsi OLT"
+
+                    if score > best_desc_score:
+                        best_desc_score = score
+                        best_desc_sec = sec
+                        best_desc_reason = reason
+                        best_desc_label = label
+                        if score >= 98:
+                            break
+
+                if best_desc_sec and best_desc_score >= 70:
+                    matched_uname = best_desc_sec.get("name")
+                    matched_cust_name = best_desc_sec.get("comment") or clean_desc or matched_uname
+                    matched_profile = best_desc_sec.get("profile") or "20 Mbps"
+                    match_reason = best_desc_reason
+                    confidence = "high" if best_desc_score >= 88 else "medium"
+                    confidence_label = best_desc_label
+
+            # ─── Priority 2: Match with Active PPPoE MAC (Hardware-Level 100%) ───
+            if not matched_uname:
+                matched_active = active_by_mac.get(clean_sn)
+                if not matched_active and len(clean_sn) >= 6:
+                    for mac_k, sess in active_by_mac.items():
+                        if mac_k in clean_sn or clean_sn in mac_k or clean_sn[-12:] == mac_k or clean_sn[-6:] == mac_k[-6:]:
+                            matched_active = sess
+                            break
+
+                if matched_active:
+                    act_uname = matched_active.get("name")
+                    if act_uname and act_uname not in matched_secrets_used:
+                        matched_uname = act_uname
+                        sec = secret_by_name.get(act_uname, {})
+                        matched_cust_name = sec.get("comment") or clean_desc or act_uname
+                        matched_profile = sec.get("profile") or "20 Mbps"
+                        match_reason = "mac_match"
+                        confidence = "high"
+                        confidence_label = "🟢 100% Cocok MAC Hardware"
+
+            # ─── Priority 3: Match with PPPoE Secret Caller-ID / Comment (SN 100%) ───
             if not matched_uname and clean_sn:
                 matched_sec = secret_by_mac.get(clean_sn)
                 if not matched_sec and len(clean_sn) >= 6:
@@ -1054,57 +1161,7 @@ def auto_scan_all_customers(
                         confidence = "high"
                         confidence_label = "🟢 100% Cocok Serial Number"
 
-            # Attempt C: Match by extracted Customer Name & Description (Smart Name Matcher)
-            if not matched_uname and base_name:
-                best_sec = None
-                best_score = 0
-                nb = _norm(base_name)
-                nc = _norm(clean_desc)
-                b_tokens = set(re.findall(r'[a-z0-9]{3,}', base_name.lower()))
-
-                for sec in secrets:
-                    uname = sec.get("name")
-                    if not uname or uname in matched_secrets_used:
-                        continue
-                    ns_name = _norm(uname)
-                    ns_comment = _norm(sec.get("comment"))
-
-                    score = 0
-                    if nb and (nb == ns_name or nb == ns_comment):
-                        score = 85
-                    elif nc and (nc == ns_comment or nc == ns_name):
-                        score = 80
-                    elif b_tokens:
-                        s_tokens = set(re.findall(r'[a-z0-9]{3,}', (str(uname) + ' ' + str(sec.get("comment") or "")).lower()))
-                        if b_tokens.issubset(s_tokens):
-                            score = 75
-                        elif s_tokens:
-                            common = b_tokens.intersection(s_tokens)
-                            if any(len(t) >= 4 for t in common):
-                                score = 65
-                    if not score and len(nb) >= 4:
-                        if nb in ns_name or nb in ns_comment or ns_name in nb:
-                            score = 60
-
-                    if score > best_score:
-                        best_score = score
-                        best_sec = sec
-
-                if best_sec and best_score >= 60:
-                    uname = best_sec.get("name")
-                    matched_uname = uname
-                    matched_cust_name = best_sec.get("comment") or clean_desc or uname
-                    matched_profile = best_sec.get("profile") or "20 Mbps"
-                    if best_score >= 80:
-                        match_reason = "exact_name"
-                        confidence = "high"
-                        confidence_label = f"🟢 {best_score}% Nama Sama Persis"
-                    else:
-                        match_reason = "token_overlap"
-                        confidence = "medium"
-                        confidence_label = f"🟡 {best_score}% Nama Mirip (Cek Dulu)"
-
-            # Attempt D: Fallback to existing username if already linked
+            # ─── Priority 4: Existing Link in DB ───
             if not matched_uname and existing_uname:
                 matched_uname = existing_uname
                 sec = secret_by_name.get(existing_uname, {})
