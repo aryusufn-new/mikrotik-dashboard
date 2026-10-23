@@ -133,6 +133,7 @@ function OltManagementModal({ isOpen, onClose, olts, onReload }) {
   const [submitting, setSubmitting] = useState(false)
   const [scanResult, setScanResult] = useState(null)
   const [scanningId, setScanningId] = useState(null)
+  const [importingId, setImportingId] = useState(null)
 
   useEffect(() => {
     if (!isOpen) return
@@ -196,12 +197,13 @@ function OltManagementModal({ isOpen, onClose, olts, onReload }) {
   }
 
   const handleDelete = async (id, name) => {
-    if (!window.confirm(`Hapus konfigurasi OLT "${name}"?`)) return
+    if (!window.confirm(`Hapus konfigurasi OLT "${name}" beserta seluruh data ONU terdaftarnya?`)) return
     try {
       await deleteOlt(id)
+      if (scanResult?.id === id) setScanResult(null)
       onReload()
     } catch (e) {
-      alert('Gagal menghapus OLT: ' + e.message)
+      alert('Gagal menghapus OLT: ' + (e?.response?.data?.detail || e.message))
     }
   }
 
@@ -475,19 +477,32 @@ function OltManagementModal({ isOpen, onClose, olts, onReload }) {
 
                       <button
                         onClick={async () => {
+                          setImportingId(olt.id)
                           try {
-                            const res = await autoScanCustomers(olt.id)
+                            const res = await autoScanCustomers(olt.id, { items: scanResult.items })
                             alert(res.message || 'Berhasil mensinkronkan semua ONU ke daftar pelanggan!')
                             onReload()
                             onClose()
                           } catch (e) {
-                            alert('Gagal impor ONU: ' + e.message)
+                            alert('Gagal impor ONU: ' + (e?.response?.data?.detail || e.message))
+                          } finally {
+                            setImportingId(null)
                           }
                         }}
-                        className="w-full mt-2 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-sm"
+                        disabled={importingId === olt.id}
+                        className="w-full mt-2 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-sm"
                       >
-                        <Zap size={14} className="text-amber-300" />
-                        Tampilkan List ONU Ini ke Menu FTTH
+                        {importingId === olt.id ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin text-white" />
+                            <span>Mengimpor ONU ke FTTH...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Zap size={14} className="text-amber-300" />
+                            <span>Tampilkan List ONU Ini ke Menu FTTH</span>
+                          </>
+                        )}
                       </button>
                     </div>
                   )}

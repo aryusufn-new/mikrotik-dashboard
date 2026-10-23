@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Header, Request
+from fastapi import APIRouter, Depends, HTTPException, Header, Request, Body
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from typing import Optional, Any
@@ -787,13 +787,14 @@ def sync_pppoe(router_id: Optional[int] = Depends(_get_router_id), user: dict = 
 
 @router.post("/customers/auto-scan")
 def auto_scan_all_customers(
+    payload: Optional[dict] = Body(default=None),
     olt_id: Optional[int] = None,
     router_id: Optional[int] = Depends(_get_router_id),
     user: dict = Depends(get_current_user),
 ):
     """
     OLT-First FTTH Customer Auto Scan & Synchronization:
-    1. Scan registered ONUs across the OLT via SNMP (Master Data).
+    1. Scan registered ONUs across the OLT via SNMP (Master Data) or accept pre-scanned items.
     2. Synchronize each ONU with MikroTik PPPoE accounts via MAC / Serial Number matching.
     """
     import re
@@ -805,7 +806,7 @@ def auto_scan_all_customers(
         return re.sub(r"[^A-Za-z0-9]", "", str(val)).upper()
 
     try:
-        # 1. Clean existing duplicates
+        # 1. Clean existing duplicates and orphaned customers from deleted OLTs
         try:
             db.deduplicate_customers(user["id"])
         except Exception as e:
@@ -853,16 +854,18 @@ def auto_scan_all_customers(
             except Exception as e:
                 print("Failed to auto-create default OLT:", e)
 
-        # 4. Master Data: Scan registered ONUs from OLT
+        # 4. Master Data: Use pre-scanned items if supplied by caller, or scan live from OLT
         onus = []
-        if primary_olt:
+        if payload and payload.get("items"):
+            onus = payload["items"]
+        elif primary_olt:
             try:
                 onus = olt_service.scan_olt_onus(primary_olt)
             except Exception as e:
                 print("scan_olt_onus primary failed:", e)
                 onus = []
 
-        if not onus and primary_olt:
+        if not onus and primary_olt and not (payload and "items" in payload):
             try:
                 onus = olt_service.scan_olt_onus({**primary_olt, "host": "127.0.0.1"})
             except Exception as e:
@@ -980,7 +983,7 @@ def auto_scan_all_customers(
             dist_km = onu.get("distance_km")
             opt_status = onu.get("status", "normal")
 
-            if rx_power is None and primary_olt:
+            if rx_power is None and primary_olt and not (payload and payload.get("items")):
                 try:
                     opt = olt_service.fetch_onu_optical(primary_olt, pon_port, onu_id_int, onu_sn)
                     rx_power = opt["rx_power"]

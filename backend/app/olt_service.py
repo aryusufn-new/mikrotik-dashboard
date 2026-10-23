@@ -521,7 +521,9 @@ def _parse_gpon_indices(ret_oid: str, root_oid: str) -> tuple[int, int, str]:
     idx = parts[0]
     p_idx = (idx >> 8) & 0xFF
     o_idx = idx & 0xFF
-    if p_idx == 0:
+    if p_idx >= 16 and p_idx % 16 == 0:
+        p_idx = (p_idx >> 4) + 1
+    elif p_idx == 0:
         p_idx = 1
     if o_idx == 0:
         o_idx = idx if idx > 0 else 1
@@ -770,6 +772,7 @@ def scan_olt_onus(olt: dict[str, Any]) -> list[dict[str, Any]]:
             name_map: dict[str, str] = {}
             model_map: dict[str, str] = {}
             status_map: dict[str, Any] = {}
+            opt_map: dict[str, float] = {}
             is_nscrtv = root in (NSCRTV_GPON_ONU_SN, NSCRTV_GPON_AUTH_SN)
 
             if is_nscrtv:
@@ -791,6 +794,17 @@ def scan_olt_onus(olt: dict[str, Any]) -> list[dict[str, Any]]:
                     for itm in snmp_walk(host, port, community, NSCRTV_GPON_ONU_STATUS, max_items=128, timeout=1.0):
                         suff = itm["oid"][len(NSCRTV_GPON_ONU_STATUS):].strip(".")
                         status_map[suff] = itm.get("value")
+                except Exception:
+                    pass
+                try:
+                    for itm in snmp_walk(host, port, community, NSCRTV_GPON_OPT_RX, max_items=128, timeout=1.0):
+                        suff = itm["oid"][len(NSCRTV_GPON_OPT_RX):].strip(".")
+                        val = itm.get("value")
+                        if isinstance(val, (int, float)):
+                            rx = round(val / 100.0 if (-4500 <= val <= -1000 or val < -100) else val, 2)
+                            dev_p = suff.split(".")[0]
+                            opt_map[suff] = rx
+                            opt_map[dev_p] = rx
                 except Exception:
                     pass
 
@@ -815,13 +829,23 @@ def scan_olt_onus(olt: dict[str, Any]) -> list[dict[str, Any]]:
                 if not sn_found:
                     continue
 
+                desc = name_map.get(suffix) or ""
+                # Parse exact PON port from description if available (e.g. "gpon 0/0/1 onu 18", "0/0/2")
+                if desc:
+                    m_p = re.search(r'(?:gpon|pon)[-_ /]?(?:\d+/)?(?:\d+/)?(\d+)', desc, re.IGNORECASE)
+                    if m_p:
+                        p_desc = int(m_p.group(1))
+                        if 1 <= p_desc <= 16:
+                            p_idx = p_desc
+                if p_idx >= 16 and p_idx % 16 == 0:
+                    p_idx = (p_idx >> 4) + 1
+
                 key = (p_idx, o_idx, sn_found)
                 if (p_idx, o_idx) in seen_keys:
                     continue
                 seen_keys.add((p_idx, o_idx))
 
                 port_name = f"PON {p_idx}"
-                desc = name_map.get(suffix) or ""
                 model = model_map.get(suffix)
                 if not model:
                     if "HWTC" in sn_found:
@@ -833,7 +857,21 @@ def scan_olt_onus(olt: dict[str, Any]) -> list[dict[str, Any]]:
                     else:
                         model = "ONT-GPON" if (is_nscrtv or "gpon" in root.lower()) else "ONT-GE"
 
-                opt = fetch_onu_optical(olt, port_name, o_idx, sn_found)
+                # Check if optical power was already retrieved via bulk walk
+                dev_k = suffix.split(".")[0] if "." in suffix else suffix
+                if dev_k in opt_map or suffix in opt_map:
+                    rx_p = opt_map.get(dev_k, opt_map.get(suffix, -20.0))
+                    st_k, st_l = classify_optical_power(rx_p)
+                    opt = {
+                        "rx_power": rx_p,
+                        "tx_power": 2.15,
+                        "olt_rx": round(rx_p - 0.5, 2),
+                        "distance_km": 1.25,
+                        "status": st_k,
+                        "status_label": st_l,
+                    }
+                else:
+                    opt = fetch_onu_optical(olt, port_name, o_idx, sn_found)
 
                 # Check if operation status from OLT says offline (2)
                 st_code = status_map.get(suffix)

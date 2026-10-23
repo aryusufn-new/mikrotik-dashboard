@@ -558,7 +558,15 @@ def delete_olt(olt_id: int, user_id: int) -> bool:
     conn = _conn()
     try:
         with conn.cursor() as cur:
+            # Delete all ONUs/customers associated with this OLT
+            cur.execute("DELETE FROM customers WHERE olt_id = %s AND user_id = %s", (olt_id, user_id))
             cur.execute("DELETE FROM olts WHERE id = %s AND user_id = %s", (olt_id, user_id))
+            # Also clean up any orphaned customers whose OLT no longer exists
+            cur.execute("""
+                DELETE FROM customers 
+                WHERE user_id = %s 
+                  AND (olt_id IS NULL OR olt_id NOT IN (SELECT id FROM olts WHERE user_id = %s))
+            """, (user_id, user_id))
             conn.commit()
             return cur.rowcount > 0
     finally:
@@ -683,6 +691,13 @@ def deduplicate_customers(user_id: int) -> int:
     conn = _conn()
     try:
         with conn.cursor() as cur:
+            # 0. Clean up any orphaned customers whose OLT was deleted
+            cur.execute("""
+                DELETE FROM customers
+                WHERE user_id = %s
+                  AND (olt_id IS NULL OR olt_id NOT IN (SELECT id FROM olts WHERE user_id = %s))
+            """, (user_id, user_id))
+
             # 1. Deduplicate by OLT, PON port, and ONU ID
             cur.execute("""
                 DELETE FROM customers

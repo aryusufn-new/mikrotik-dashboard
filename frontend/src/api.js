@@ -103,7 +103,7 @@ export const getOlt = (id) => http.get(`/api/olts/${id}`).then(r => r.data)
 export const updateOlt = (id, data) => http.put(`/api/olts/${id}`, data).then(r => r.data)
 export const deleteOlt = (id) => http.delete(`/api/olts/${id}`).then(r => r.data)
 export const testOltConnection = (id) => http.post(`/api/olts/${id}/test`).then(r => r.data)
-export const scanOltOnus = (id) => http.get(`/api/olts/${id}/scan`).then(r => r.data)
+export const scanOltOnus = (id) => http.get(`/api/olts/${id}/scan`, { timeout: 60000 }).then(r => r.data)
 
 export const getCustomers = (params = {}) => {
   const query = new URLSearchParams()
@@ -121,7 +121,7 @@ export const deleteCustomer = (id) => http.delete(`/api/customers/${id}`).then(r
 export const checkCustomerOptical = (id) => http.post(`/api/customers/${id}/optical`).then(r => r.data)
 export const checkAllOptical = (olt_id = null) => http.post(`/api/customers/check-optical-all${olt_id ? `?olt_id=${olt_id}` : ''}`).then(r => r.data)
 export const syncPppoe = () => http.post('/api/customers/sync-pppoe').then(r => r.data)
-export const autoScanCustomers = (olt_id = null) => http.post(`/api/customers/auto-scan${olt_id ? `?olt_id=${olt_id}` : ''}`).then(r => r.data)
+export const autoScanCustomers = (olt_id = null, payload = null) => http.post(`/api/customers/auto-scan${olt_id ? `?olt_id=${olt_id}` : ''}`, payload || {}, { timeout: 60000 }).then(r => r.data)
 export const importAllPppoe = () => http.post('/api/customers/import-all-pppoe').then(r => r.data)
 
 
