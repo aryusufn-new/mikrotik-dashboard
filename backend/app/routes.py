@@ -969,7 +969,7 @@ def auto_scan_all_customers(
                         matched_profile = matched_sec.get("profile") or "20 Mbps"
 
             # Final names and credentials (strictly OLT-first)
-            final_name = matched_cust_name if matched_cust_name else f"ONU {pon_port} #{onu_id_int}"
+            final_name = matched_cust_name if matched_cust_name else (onu.get("description") or onu.get("onu_name") or f"ONU {pon_port} #{onu_id_int}")
             final_uname = matched_uname if matched_uname else ""
             final_profile = matched_profile
 

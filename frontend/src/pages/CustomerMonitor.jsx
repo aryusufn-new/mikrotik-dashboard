@@ -454,6 +454,11 @@ function OltManagementModal({ isOpen, onClose, olts, onReload }) {
                           <div key={idx} className="py-1.5 flex items-center justify-between">
                             <span className="font-mono text-slate-800 dark:text-slate-200">
                               {it.pon_port} #{it.onu_id} • <strong>{it.onu_sn}</strong> ({it.onu_model})
+                              {it.description ? (
+                                <span className="ml-1.5 text-violet-600 dark:text-violet-400 font-sans font-semibold">
+                                  — {it.description}
+                                </span>
+                              ) : null}
                             </span>
                             <span
                               className={`px-1.5 py-0.5 rounded font-bold ${
