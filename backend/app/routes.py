@@ -823,7 +823,7 @@ def auto_scan_all_customers(
                 pass
         if not valid_router_id:
             try:
-                routers = db.list_router_configs(user["id"])
+                routers = db.list_routers(user["id"])
                 if routers:
                     valid_router_id = routers[0]["id"]
             except Exception:
@@ -960,6 +960,16 @@ def auto_scan_all_customers(
         matched_secrets_used = set()
         valid_customer_ids = []
 
+        # Existing PPPoE links keyed by ONU SN (preserve manual links on re-import)
+        existing_uname_by_sn = {}
+        try:
+            for c in db.list_customers(user["id"]):
+                sn_key = _clean(c.get("onu_sn"))
+                if sn_key and c.get("pppoe_username"):
+                    existing_uname_by_sn[sn_key] = c.get("pppoe_username")
+        except Exception as e:
+            print("Warning: load existing customers failed:", e)
+
         for idx, onu in enumerate(onus):
             pon_port = str(onu.get("pon_port") or f"PON {(idx % 8) + 1}")
             try:
@@ -988,9 +998,7 @@ def auto_scan_all_customers(
             # Check existing username for this customer
             existing_uname = onu.get("existing_uname")
             if not existing_uname and onu_sn:
-                ex_c = db.find_customer_by_sn(user["id"], onu_sn)
-                if ex_c and ex_c.get("pppoe_username"):
-                    existing_uname = ex_c.get("pppoe_username")
+                existing_uname = existing_uname_by_sn.get(clean_sn) or ""
 
             # Attempt A: Match with active PPPoE session caller-id (MAC address)
             matched_active = active_by_mac.get(clean_sn)
