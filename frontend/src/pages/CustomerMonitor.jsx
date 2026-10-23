@@ -646,32 +646,89 @@ function SyncOnuToPppoeModal({ isOpen, onClose, customer, secrets, activeSession
   const [customerName, setCustomerName] = useState('')
   const [packageName, setPackageName] = useState('20 Mbps')
   const [saving, setSaving] = useState(false)
+  const [availableSecrets, setAvailableSecrets] = useState(secrets || [])
+  const [loadingSecrets, setLoadingSecrets] = useState(false)
 
-  // Pre-fill when modal opens
+  // Fetch secrets if empty when modal opens
+  useEffect(() => {
+    if (secrets && secrets.length > 0) {
+      setAvailableSecrets(secrets)
+    } else if (isOpen) {
+      setLoadingSecrets(true)
+      getPppSecrets()
+        .then((res) => setAvailableSecrets(res || []))
+        .catch(() => setAvailableSecrets([]))
+        .finally(() => setLoadingSecrets(false))
+    }
+  }, [secrets, isOpen])
+
+  // Extract clean customer name from ONU description
+  const cleanDescAndBase = useMemo(() => {
+    if (!customer?.name) return { cleanDesc: '', baseName: '' }
+    let s = customer.name.trim()
+    s = s.replace(/^(?:gpon|epon|pon|ont|onu)[-_ /]?(?:\d+[/:_])?(?:\d+[/:_])?\d*\s*(?:onu\s*\d+)?[:.\s#_-]*/i, '')
+    s = s.replace(/^(?:onu\s*)?#?\d+[:.\s#_-]*/i, '')
+    s = s.replace(/^[A-Za-z]\d+[-_]/, '')
+    s = s.trim().replace(/^[-_#\s]+|[-_#\s]+$/g, '')
+    if (!s || /^\d+$/.test(s)) return { cleanDesc: '', baseName: '' }
+    const base = s.replace(/\s*[-_]\s*[A-Za-z0-9]{2,4}$/, '').trim()
+    return { cleanDesc: s, baseName: base || s }
+  }, [customer?.name])
+
+  // Pre-fill when modal opens & smart match
   useEffect(() => {
     if (customer && isOpen) {
-      setCustomerName(customer.name?.startsWith('ONU PON') ? '' : customer.name || '')
+      const { cleanDesc, baseName } = cleanDescAndBase
+      const defaultName = cleanDesc || (customer.name?.startsWith('ONU PON') ? '' : customer.name || '')
+      setCustomerName(defaultName)
       setPackageName(customer.package_name || '20 Mbps')
       setSelectedSecret(null)
       setSearchTerm('')
 
-      // Auto-suggest secret if caller-id or comment matches ONU SN
-      if (customer.onu_sn && secrets) {
-        const cleanSn = customer.onu_sn.replace(/[^A-Za-z0-9]/g, '').toUpperCase()
-        const matched = secrets.find((s) => {
-          const cid = (s.caller_id || s['caller-id'] || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase()
-          const cmt = (s.comment || '').toUpperCase()
-          const uname = (s.name || '').toUpperCase()
-          return (
-            (cid && (cid === cleanSn || cleanSn.includes(cid) || cid.includes(cleanSn))) ||
-            (cmt && cmt.includes(cleanSn)) ||
-            (uname && uname === cleanSn)
-          )
-        })
+      if (availableSecrets && availableSecrets.length > 0) {
+        const cleanSn = (customer.onu_sn || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+        const normBase = (baseName || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+        const normDesc = (cleanDesc || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+
+        // Priority 1: Match already linked username
+        let matched = null
+        if (customer.pppoe_username) {
+          matched = availableSecrets.find((s) => s.name === customer.pppoe_username)
+        }
+
+        // Priority 2: Match MAC / Serial Number
+        if (!matched && cleanSn) {
+          matched = availableSecrets.find((s) => {
+            const cid = (s.caller_id || s['caller-id'] || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+            const cmt = (s.comment || '').toUpperCase()
+            const uname = (s.name || '').toUpperCase()
+            return (
+              (cid && (cid === cleanSn || cleanSn.includes(cid) || cid.includes(cleanSn))) ||
+              (cmt && cmt.includes(cleanSn)) ||
+              (uname && uname === cleanSn)
+            )
+          })
+        }
+
+        // Priority 3: Match customer name extracted from OLT description
+        if (!matched && normBase) {
+          matched = availableSecrets.find((s) => {
+            const uNorm = (s.name || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+            const cNorm = (s.comment || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+            return (
+              (normBase && (normBase === uNorm || normBase === cNorm)) ||
+              (normDesc && (normDesc === cNorm || normDesc === uNorm)) ||
+              (normBase.length >= 4 && (uNorm.includes(normBase) || cNorm.includes(normBase)))
+            )
+          })
+        }
+
         if (matched) {
           setSelectedSecret(matched)
-          if (!customer.name || customer.name.startsWith('ONU PON')) {
-            setCustomerName(matched.comment || matched.name)
+          if (matched.comment) {
+            setCustomerName(matched.comment)
+          } else if (cleanDesc) {
+            setCustomerName(cleanDesc)
           }
           if (matched.profile) {
             setPackageName(matched.profile)
@@ -679,7 +736,7 @@ function SyncOnuToPppoeModal({ isOpen, onClose, customer, secrets, activeSession
         }
       }
     }
-  }, [customer, isOpen, secrets])
+  }, [customer, isOpen, availableSecrets, cleanDescAndBase])
 
   useEffect(() => {
     if (!isOpen) return
@@ -706,7 +763,7 @@ function SyncOnuToPppoeModal({ isOpen, onClose, customer, secrets, activeSession
   }
 
   // Filter secrets based on search term
-  const filteredSecrets = (secrets || []).filter((s) => {
+  const filteredSecrets = (availableSecrets || []).filter((s) => {
     if (!searchTerm.trim()) return true
     const term = searchTerm.toLowerCase()
     return (
@@ -857,8 +914,9 @@ function SyncOnuToPppoeModal({ isOpen, onClose, customer, secrets, activeSession
         {/* Secret Selector */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-              Pilih Akun PPPoE MikroTik ({filteredSecrets.length} akun tersedia)
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <span>Pilih Akun PPPoE MikroTik ({filteredSecrets.length} akun tersedia)</span>
+              {loadingSecrets && <Loader2 size={12} className="animate-spin text-violet-600" />}
             </label>
           </div>
 
@@ -877,7 +935,7 @@ function SyncOnuToPppoeModal({ isOpen, onClose, customer, secrets, activeSession
           <div className="max-h-48 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 text-xs">
             {filteredSecrets.length === 0 ? (
               <div className="p-4 text-center text-slate-400 text-xs">
-                Tidak ada akun PPPoE yang cocok dengan pencarian.
+                {loadingSecrets ? 'Memuat akun PPPoE dari MikroTik...' : 'Tidak ada akun PPPoE yang cocok dengan pencarian.'}
               </div>
             ) : (
               filteredSecrets.map((s) => {
@@ -885,6 +943,12 @@ function SyncOnuToPppoeModal({ isOpen, onClose, customer, secrets, activeSession
                 const isLiveOnline = !!activeMap[s.name]
                 const secretMacClean = (s.caller_id || s['caller-id'] || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase()
                 const isMacMatch = secretMacClean && cleanSn && (secretMacClean === cleanSn || cleanSn.includes(secretMacClean) || secretMacClean.includes(cleanSn))
+                
+                const { cleanDesc, baseName } = cleanDescAndBase
+                const normBase = (baseName || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+                const uNorm = (s.name || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+                const cNorm = (s.comment || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+                const isNameMatch = normBase && (normBase === uNorm || normBase === cNorm || (normBase.length >= 4 && (uNorm.includes(normBase) || cNorm.includes(normBase))))
 
                 return (
                   <div
@@ -907,6 +971,11 @@ function SyncOnuToPppoeModal({ isOpen, onClose, customer, secrets, activeSession
                         {isMacMatch && (
                           <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300">
                             ⭐ Rekomendasi (MAC Cocok)
+                          </span>
+                        )}
+                        {isNameMatch && !isMacMatch && (
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300">
+                            ⭐ Rekomendasi (Nama Cocok)
                           </span>
                         )}
                       </div>
@@ -1096,7 +1165,7 @@ export default function CustomerMonitor() {
     setScanningOlt(true)
     setOltTestResult(null)
     try {
-      const res = await autoScanCustomers(selectedOlt ? Number(selectedOlt) : null)
+      const res = await autoScanCustomers(selectedOlt ? Number(selectedOlt) : null, { force_scan: true })
       alert(res.message || 'Scan OLT selesai!')
       await loadData()
     } catch (e) {
@@ -1106,11 +1175,11 @@ export default function CustomerMonitor() {
     }
   }
 
-  // Step 4 & 5: Auto Sync all unlinked ONUs matching MikroTik MAC/SN
+  // Step 4 & 5: Auto Sync all unlinked ONUs matching MikroTik MAC/SN & Customer Name
   const handleAutoSyncAll = async () => {
     setAutoSyncingAll(true)
     try {
-      const res = await autoScanCustomers(selectedOlt ? Number(selectedOlt) : null)
+      const res = await autoScanCustomers(selectedOlt ? Number(selectedOlt) : null, { sync_only: true })
       alert(res.message || 'Sinkronisasi selesai!')
       await loadData()
     } catch (e) {
@@ -1231,14 +1300,14 @@ export default function CustomerMonitor() {
             onClick={handleAutoSyncAll}
             disabled={autoSyncingAll}
             className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-900 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-sm transition disabled:opacity-60"
-            title="Cocokkan otomatis ONU yang belum sync dengan akun PPPoE MikroTik via MAC/SN"
+            title="Cocokkan otomatis ONU yang belum sync dengan akun PPPoE MikroTik via Nama Pelanggan, Komentar, & MAC/SN"
           >
             {autoSyncingAll ? (
               <Loader2 size={13} className="animate-spin text-indigo-600" />
             ) : (
               <LinkIcon size={13} className="text-indigo-600" />
             )}
-            Auto Sync PPPoE (MAC/SN)
+            Auto Sync PPPoE (Nama/SN)
           </button>
 
           <button
@@ -1321,11 +1390,11 @@ export default function CustomerMonitor() {
           </div>
           <div className="min-w-0">
             <div className="font-bold text-xs text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-              <span>Action Sync PPPoE</span>
+              <span>Auto Sync PPPoE</span>
               {autoSyncingAll && <Loader2 size={12} className="animate-spin text-amber-500" />}
             </div>
             <div className="text-[11px] text-slate-400 mt-0.5 truncate">
-              Sinkronisasi data ONU ke MikroTik
+              Cocokkan Nama, Komentar, & MAC
             </div>
           </div>
         </div>

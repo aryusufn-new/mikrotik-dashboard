@@ -854,11 +854,60 @@ def auto_scan_all_customers(
             except Exception as e:
                 print("Failed to auto-create default OLT:", e)
 
-        # 4. Master Data: Use pre-scanned items if supplied by caller, or scan live from OLT
+        def _norm(s) -> str:
+            if not s:
+                return ""
+            return re.sub(r"[^a-z0-9]", "", str(s).lower())
+
+        def _extract_customer_name(desc: str) -> tuple[str, str]:
+            if not desc:
+                return "", ""
+            s = str(desc).strip()
+            s = re.sub(
+                r'^(?:gpon|epon|pon|ont|onu)[-_ /]?(?:\d+[/:_])?(?:\d+[/:_])?\d*\s*(?:onu\s*\d+)?[:.\s#_-]*',
+                '',
+                s,
+                flags=re.IGNORECASE,
+            ).strip(" _-#")
+            s = re.sub(r'^(?:onu\s*)?#?\d+[:.\s#_-]*', '', s, flags=re.IGNORECASE).strip(" _-#")
+            s = re.sub(r'^[A-Za-z]\d+[-_]', '', s).strip(" _-#")
+            if not s or s.isdigit():
+                return "", ""
+            clean_desc = s
+            base_name = re.sub(r'\s*[-_]\s*[A-Za-z0-9]{2,4}$', '', clean_desc).strip(" _-#")
+            return clean_desc, base_name or clean_desc
+
+        # 4. Master Data: Use pre-scanned items, existing DB records, or scan live from OLT
         onus = []
+        is_sync_only = bool(payload and payload.get("sync_only"))
+        force_scan = bool(payload and payload.get("force_scan"))
+
         if payload and payload.get("items"):
             onus = payload["items"]
-        elif primary_olt:
+        elif primary_olt and not force_scan:
+            # Check existing customers in DB first for instant sync
+            db_customers = db.list_customers(user["id"], olt_id=primary_olt["id"])
+            if db_customers:
+                onus = [
+                    {
+                        "pon_port": c.get("pon_port"),
+                        "onu_id": c.get("onu_id"),
+                        "onu_sn": c.get("onu_sn"),
+                        "onu_model": c.get("onu_model"),
+                        "onu_name": c.get("name"),
+                        "description": c.get("name"),
+                        "rx_power": c.get("last_rx_power"),
+                        "tx_power": c.get("last_tx_power"),
+                        "olt_rx": c.get("last_olt_rx"),
+                        "distance_km": c.get("last_distance"),
+                        "status": c.get("last_optical_status") or "normal",
+                        "existing_id": c.get("id"),
+                        "existing_uname": c.get("pppoe_username") or "",
+                    }
+                    for c in db_customers
+                ]
+
+        if not onus and primary_olt:
             try:
                 onus = olt_service.scan_olt_onus(primary_olt)
             except Exception as e:
@@ -928,10 +977,20 @@ def auto_scan_all_customers(
             onu_model = str(onu.get("onu_model") or "V2801SG")
             clean_sn = _clean(onu_sn)
 
-            # Match with MikroTik by MAC / Serial Number
+            onu_raw_name = onu.get("description") or onu.get("onu_name") or onu.get("name") or ""
+            clean_desc, base_name = _extract_customer_name(onu_raw_name)
+
+            # Match with MikroTik: Priority 1 (MAC), Priority 2 (SN), Priority 3 (Name/Tokens)
             matched_uname = None
             matched_cust_name = None
             matched_profile = "20 Mbps"
+
+            # Check existing username for this customer
+            existing_uname = onu.get("existing_uname")
+            if not existing_uname and onu_sn:
+                ex_c = db.find_customer_by_sn(user["id"], onu_sn)
+                if ex_c and ex_c.get("pppoe_username"):
+                    existing_uname = ex_c.get("pppoe_username")
 
             # Attempt A: Match with active PPPoE session caller-id (MAC address)
             matched_active = active_by_mac.get(clean_sn)
@@ -942,37 +1001,98 @@ def auto_scan_all_customers(
                         break
 
             if matched_active:
-                matched_uname = matched_active.get("name")
-                if matched_uname:
-                    matched_secrets_used.add(matched_uname)
-                    sec = secret_by_name.get(matched_uname, {})
-                    matched_cust_name = sec.get("comment") or matched_uname
+                act_uname = matched_active.get("name")
+                if act_uname and act_uname not in matched_secrets_used:
+                    matched_uname = act_uname
+                    sec = secret_by_name.get(act_uname, {})
+                    matched_cust_name = sec.get("comment") or clean_desc or act_uname
                     matched_profile = sec.get("profile") or "20 Mbps"
 
-            # Attempt B: Match with PPPoE secret caller-id, comment, or name
-            if not matched_uname:
+            # Attempt B: Match with PPPoE secret caller-id, name, or comment (SN match)
+            if not matched_uname and clean_sn:
                 matched_sec = secret_by_mac.get(clean_sn)
                 if not matched_sec and len(clean_sn) >= 6:
                     for sec in secrets:
                         uname = sec.get("name")
-                        if uname in matched_secrets_used:
+                        if not uname or uname in matched_secrets_used:
                             continue
                         sec_cid = _clean(sec.get("caller_id") or sec.get("caller-id"))
                         sec_comment = _clean(sec.get("comment"))
                         sec_name = _clean(uname)
-                        if clean_sn and (clean_sn == sec_cid or clean_sn in sec_comment or clean_sn in sec_name):
+                        if (sec_cid and clean_sn == sec_cid) or (clean_sn == sec_name) or (clean_sn in sec_comment):
                             matched_sec = sec
                             break
 
                 if matched_sec:
-                    matched_uname = matched_sec.get("name")
-                    if matched_uname:
-                        matched_secrets_used.add(matched_uname)
-                        matched_cust_name = matched_sec.get("comment") or matched_uname
+                    uname = matched_sec.get("name")
+                    if uname and uname not in matched_secrets_used:
+                        matched_uname = uname
+                        matched_cust_name = matched_sec.get("comment") or clean_desc or uname
                         matched_profile = matched_sec.get("profile") or "20 Mbps"
 
-            # Final names and credentials (strictly OLT-first)
-            final_name = matched_cust_name if matched_cust_name else (onu.get("description") or onu.get("onu_name") or f"ONU {pon_port} #{onu_id_int}")
+            # Attempt C: Match by extracted Customer Name & Description (Smart Name Matcher)
+            if not matched_uname and base_name:
+                best_sec = None
+                best_score = 0
+                nb = _norm(base_name)
+                nc = _norm(clean_desc)
+                b_tokens = set(re.findall(r'[a-z0-9]{3,}', base_name.lower()))
+
+                for sec in secrets:
+                    uname = sec.get("name")
+                    if not uname or uname in matched_secrets_used:
+                        continue
+                    ns_name = _norm(uname)
+                    ns_comment = _norm(sec.get("comment"))
+
+                    score = 0
+                    if nb and (nb == ns_name or nb == ns_comment):
+                        score = 85
+                    elif nc and (nc == ns_comment or nc == ns_name):
+                        score = 80
+                    elif b_tokens:
+                        s_tokens = set(re.findall(r'[a-z0-9]{3,}', (str(uname) + ' ' + str(sec.get("comment") or "")).lower()))
+                        if b_tokens.issubset(s_tokens):
+                            score = 75
+                        elif s_tokens:
+                            common = b_tokens.intersection(s_tokens)
+                            if any(len(t) >= 4 for t in common):
+                                score = 65
+                    if not score and len(nb) >= 4:
+                        if nb in ns_name or nb in ns_comment or ns_name in nb:
+                            score = 60
+
+                    if score > best_score:
+                        best_score = score
+                        best_sec = sec
+
+                if best_sec and best_score >= 60:
+                    uname = best_sec.get("name")
+                    matched_uname = uname
+                    matched_cust_name = best_sec.get("comment") or clean_desc or uname
+                    matched_profile = best_sec.get("profile") or "20 Mbps"
+
+            # Attempt D: Fallback to existing username if already linked
+            if not matched_uname and existing_uname:
+                matched_uname = existing_uname
+                sec = secret_by_name.get(existing_uname, {})
+                if sec:
+                    matched_cust_name = sec.get("comment") or clean_desc or existing_uname
+                    matched_profile = sec.get("profile") or "20 Mbps"
+
+            if matched_uname:
+                matched_secrets_used.add(matched_uname)
+
+            # Final customer display name & profile
+            if matched_cust_name:
+                final_name = matched_cust_name
+            elif clean_desc:
+                final_name = clean_desc
+            elif onu_raw_name and not onu_raw_name.startswith("ONU PON"):
+                final_name = onu_raw_name
+            else:
+                final_name = f"ONU {pon_port} #{onu_id_int}"
+
             final_uname = matched_uname if matched_uname else ""
             final_profile = matched_profile
 
@@ -1021,16 +1141,17 @@ def auto_scan_all_customers(
             except Exception as e:
                 print(f"Error upserting customer {final_name}:", e)
 
-        # 7. Clean up orphan/stale customer records that do not exist on the OLT
+        # 7. Clean up orphan/stale customer records that do not exist on the OLT (skip during sync_only)
         deleted_orphans = 0
-        try:
-            deleted_orphans = db.clean_unmatched_customers(
-                user["id"],
-                primary_olt["id"] if primary_olt else None,
-                valid_customer_ids,
-            )
-        except Exception as e:
-            print("Warning: clean_unmatched_customers error:", e)
+        if not is_sync_only and valid_customer_ids:
+            try:
+                deleted_orphans = db.clean_unmatched_customers(
+                    user["id"],
+                    primary_olt["id"] if primary_olt else None,
+                    valid_customer_ids,
+                )
+            except Exception as e:
+                print("Warning: clean_unmatched_customers error:", e)
 
         # Re-deduplicate
         try:

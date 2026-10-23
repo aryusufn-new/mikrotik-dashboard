@@ -212,6 +212,7 @@ def ppp_secret_list(user_id: int | None = None, router_id: int | None = None) ->
                 "disabled": _to_bool(r.get("disabled")),
                 "online": r.get("name") in active_names,
                 "comment": r.get("comment"),
+                "caller_id": r.get("caller-id") or r.get("caller_id"),
             }
             for r in rows
         ]
