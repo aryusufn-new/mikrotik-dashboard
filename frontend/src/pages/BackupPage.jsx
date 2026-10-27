@@ -21,6 +21,7 @@ import {
   Trash2,
   X,
   AlertTriangle,
+  AlertCircle,
   FolderArchive,
   Check,
 } from 'lucide-react'
