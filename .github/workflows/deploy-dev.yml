@@ -18,5 +18,6 @@ jobs:
           script: |
             cd /opt/mikrotik-dev
             git pull origin dev
-            docker compose up -d --build
+            docker compose build frontend backend
+            docker compose up -d --force-recreate
             docker compose ps
