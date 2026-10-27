@@ -116,6 +116,33 @@ def init_db():
                     last_checked_at TIMESTAMP DEFAULT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
+                CREATE TABLE IF NOT EXISTS router_backups (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    router_id INTEGER NOT NULL REFERENCES router_configs(id) ON DELETE CASCADE,
+                    filename TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    file_size BIGINT NOT NULL DEFAULT 0,
+                    backup_type TEXT NOT NULL DEFAULT 'both',
+                    trigger_type TEXT NOT NULL DEFAULT 'manual',
+                    status TEXT NOT NULL DEFAULT 'completed',
+                    error_message TEXT DEFAULT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE IF NOT EXISTS backup_settings (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                    schedule_day INTEGER NOT NULL DEFAULT 6,
+                    schedule_hour INTEGER NOT NULL DEFAULT 2,
+                    schedule_minute INTEGER NOT NULL DEFAULT 0,
+                    backup_type TEXT NOT NULL DEFAULT 'both',
+                    retention_count INTEGER NOT NULL DEFAULT 8,
+                    last_run_at TIMESTAMP DEFAULT NULL,
+                    next_run_at TIMESTAMP DEFAULT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
             """)
             conn.commit()
 
@@ -916,3 +943,236 @@ def get_customer_stats(user_id: int) -> dict:
             }
     finally:
         _put(conn)
+
+
+# ─── Backup Functions ───
+
+def get_backup_settings(user_id: int) -> dict:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT * FROM backup_settings WHERE user_id = %s", (user_id,))
+            row = cur.fetchone()
+            if row:
+                return dict(row)
+            # Create default settings if none exist
+            cur.execute("""
+                INSERT INTO backup_settings (user_id, enabled, schedule_day, schedule_hour, schedule_minute, backup_type, retention_count)
+                VALUES (%s, TRUE, 6, 2, 0, 'both', 8)
+                RETURNING *
+            """, (user_id,))
+            conn.commit()
+            return dict(cur.fetchone())
+    finally:
+        _put(conn)
+
+
+def update_backup_settings(
+    user_id: int,
+    enabled: bool,
+    schedule_day: int,
+    schedule_hour: int,
+    schedule_minute: int,
+    backup_type: str,
+    retention_count: int,
+) -> dict:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                INSERT INTO backup_settings (user_id, enabled, schedule_day, schedule_hour, schedule_minute, backup_type, retention_count, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    enabled = EXCLUDED.enabled,
+                    schedule_day = EXCLUDED.schedule_day,
+                    schedule_hour = EXCLUDED.schedule_hour,
+                    schedule_minute = EXCLUDED.schedule_minute,
+                    backup_type = EXCLUDED.backup_type,
+                    retention_count = EXCLUDED.retention_count,
+                    updated_at = CURRENT_TIMESTAMP
+                RETURNING *
+            """, (user_id, enabled, schedule_day, schedule_hour, schedule_minute, backup_type, retention_count))
+            row = cur.fetchone()
+            conn.commit()
+            return dict(row)
+    finally:
+        _put(conn)
+
+
+def update_backup_schedule_timestamps(
+    user_id: int,
+    last_run_at: Any = None,
+    next_run_at: Any = None,
+):
+    conn = _conn()
+    try:
+        with conn.cursor() as cur:
+            if last_run_at and next_run_at:
+                cur.execute(
+                    "UPDATE backup_settings SET last_run_at = %s, next_run_at = %s WHERE user_id = %s",
+                    (last_run_at, next_run_at, user_id),
+                )
+            elif next_run_at:
+                cur.execute(
+                    "UPDATE backup_settings SET next_run_at = %s WHERE user_id = %s",
+                    (next_run_at, user_id),
+                )
+            elif last_run_at:
+                cur.execute(
+                    "UPDATE backup_settings SET last_run_at = %s WHERE user_id = %s",
+                    (last_run_at, user_id),
+                )
+            conn.commit()
+    finally:
+        _put(conn)
+
+
+def get_all_enabled_backup_settings() -> list[dict]:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT * FROM backup_settings WHERE enabled = TRUE")
+            return [dict(r) for r in cur.fetchall()]
+    finally:
+        _put(conn)
+
+
+def create_backup_record(
+    user_id: int,
+    router_id: int,
+    filename: str,
+    file_path: str,
+    file_size: int,
+    backup_type: str,
+    trigger_type: str,
+    status: str = "completed",
+    error_message: str | None = None,
+) -> dict:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                INSERT INTO router_backups (
+                    user_id, router_id, filename, file_path, file_size,
+                    backup_type, trigger_type, status, error_message, created_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                RETURNING *
+            """, (
+                user_id, router_id, filename, file_path, file_size,
+                backup_type, trigger_type, status, error_message
+            ))
+            row = cur.fetchone()
+            conn.commit()
+            return dict(row)
+    finally:
+        _put(conn)
+
+
+def list_backups(user_id: int, router_id: int | None = None) -> list[dict]:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            query = """
+                SELECT b.*, r.name AS router_name, r.host AS router_host
+                FROM router_backups b
+                LEFT JOIN router_configs r ON b.router_id = r.id
+                WHERE b.user_id = %s
+            """
+            params: list[Any] = [user_id]
+            if router_id:
+                query += " AND b.router_id = %s"
+                params.append(router_id)
+            query += " ORDER BY b.created_at DESC"
+            cur.execute(query, tuple(params))
+            return [dict(r) for r in cur.fetchall()]
+    finally:
+        _put(conn)
+
+
+def get_backup_by_id(backup_id: int, user_id: int) -> dict | None:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT b.*, r.name AS router_name, r.host AS router_host
+                FROM router_backups b
+                LEFT JOIN router_configs r ON b.router_id = r.id
+                WHERE b.id = %s AND b.user_id = %s
+            """, (backup_id, user_id))
+            row = cur.fetchone()
+            return dict(row) if row else None
+    finally:
+        _put(conn)
+
+
+def delete_backup_record(backup_id: int, user_id: int) -> dict | None:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("DELETE FROM router_backups WHERE id = %s AND user_id = %s RETURNING *", (backup_id, user_id))
+            row = cur.fetchone()
+            conn.commit()
+            return dict(row) if row else None
+    finally:
+        _put(conn)
+
+
+def prune_old_backups(user_id: int, router_id: int, keep_count: int) -> list[str]:
+    """Delete backups beyond keep_count per router, returning pruned file paths."""
+    if keep_count <= 0:
+        return []
+    conn = _conn()
+    pruned_paths: list[str] = []
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT id, file_path FROM router_backups
+                WHERE user_id = %s AND router_id = %s AND status = 'completed'
+                ORDER BY created_at DESC
+                OFFSET %s
+            """, (user_id, router_id, keep_count))
+            old_rows = cur.fetchall()
+            if old_rows:
+                old_ids = [r["id"] for r in old_rows]
+                pruned_paths = [r["file_path"] for r in old_rows if r["file_path"]]
+                cur.execute("DELETE FROM router_backups WHERE id = ANY(%s)", (old_ids,))
+                conn.commit()
+        return pruned_paths
+    finally:
+        _put(conn)
+
+
+def get_backup_stats(user_id: int) -> dict:
+    conn = _conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    COUNT(*) AS total_count,
+                    COALESCE(SUM(file_size), 0) AS total_size,
+                    MAX(created_at) AS last_backup_at
+                FROM router_backups
+                WHERE user_id = %s AND status = 'completed'
+            """, (user_id,))
+            row = cur.fetchone()
+            total_count = row[0] if row else 0
+            total_size = row[1] if row else 0
+            last_backup_at = row[2] if row else None
+
+            # Get next run
+            cur.execute("SELECT next_run_at, enabled FROM backup_settings WHERE user_id = %s", (user_id,))
+            s_row = cur.fetchone()
+            next_run_at = s_row[0] if s_row else None
+            enabled = s_row[1] if s_row else True
+
+            return {
+                "total_count": total_count,
+                "total_size": total_size,
+                "last_backup_at": last_backup_at.isoformat() if last_backup_at else None,
+                "next_run_at": next_run_at.isoformat() if next_run_at else None,
+                "enabled": enabled,
+            }
+    finally:
+        _put(conn)
+

@@ -7,3 +7,5 @@ config.json
 data.db
 node_modules/
 dist/
+backups/
+backend/backups/

@@ -140,6 +140,41 @@ export const getSyncPreview = (olt_id = null, router_id = null) => {
 export const applySyncBindings = (bindings) => http.post('/api/customers/sync-apply', { bindings }).then(r => r.data)
 export const importAllPppoe = () => http.post('/api/customers/import-all-pppoe').then(r => r.data)
 
+// ─── Backup & Restore APIs ───
+export const listBackups = (routerId = null) =>
+  http.get(`/api/backups${routerId ? `?router_id=${routerId}` : ''}`).then(r => r.data)
+
+export const runBackup = (routerId, backupType = 'both') =>
+  http.post('/api/backups/run', { router_id: routerId, backup_type: backupType }, { timeout: 60000 }).then(r => r.data)
+
+export const getBackupSettings = () =>
+  http.get('/api/backups/settings').then(r => r.data)
+
+export const updateBackupSettings = (data) =>
+  http.put('/api/backups/settings', data).then(r => r.data)
+
+export const getBackupStats = () =>
+  http.get('/api/backups/stats').then(r => r.data)
+
+export const previewBackup = (backupId) =>
+  http.get(`/api/backups/${backupId}/preview`).then(r => r.data)
+
+export const deleteBackup = (backupId) =>
+  http.delete(`/api/backups/${backupId}`).then(r => r.data)
+
+export const downloadBackupFile = async (backupId, filename) => {
+  const res = await http.get(`/api/backups/${backupId}/download`, { responseType: 'blob' })
+  const url = window.URL.createObjectURL(new Blob([res.data]))
+  const link = document.createElement('a')
+  link.href = url
+  link.setAttribute('download', filename || `backup_${backupId}.bin`)
+  document.body.appendChild(link)
+  link.click()
+  link.parentNode.removeChild(link)
+  window.URL.revokeObjectURL(url)
+}
+
+
 
 
 

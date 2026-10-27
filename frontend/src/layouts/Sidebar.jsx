@@ -2,6 +2,7 @@ import React from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   Activity,
+  Archive,
   Cable,
   ChevronDown,
   Cpu,
@@ -39,6 +40,7 @@ export default function Sidebar({ onNavigate, isCollapsed = false, onToggleColla
 
   const settingsItems = [
     { to: '/config', label: t.navConfig, icon: Settings },
+    { to: '/backups', label: t.navBackups || 'Auto Backup', icon: Archive },
   ]
 
   const adminItems = [

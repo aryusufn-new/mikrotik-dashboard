@@ -1,12 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, Header, Request, Body, Query
+from fastapi.responses import FileResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from typing import Optional, Any
+import os
 
 from . import mikrotik
 from . import config as cfg_mod
 from . import database as db
 from . import olt_service
+from . import backup_service
 from .auth import create_access_token, get_current_user, require_admin
 
 router = APIRouter(prefix="/api")
@@ -1389,6 +1392,196 @@ def apply_sync_bindings(
         "total": len(bindings),
         "message": f"Berhasil menautkan {applied} akun PPPoE ke data ONU pelanggan.",
     }
+
+
+# ─── Backup Endpoints ───
+
+@router.get("/backups")
+def get_backups(
+    router_id: Optional[int] = Query(None),
+    user: dict = Depends(get_current_user),
+):
+    """List all backups for user with optional router filter."""
+    return db.list_backups(user["id"], router_id=router_id)
+
+
+@router.post("/backups/run")
+def trigger_backup(
+    payload: dict = Body(...),
+    request: Request = None,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Trigger manual router backup on-demand.
+    payload: { router_id: int, backup_type: 'rsc' | 'backup' | 'both' }
+    """
+    router_id = payload.get("router_id")
+    if not router_id:
+        raise HTTPException(status_code=400, detail="router_id is required")
+    backup_type = payload.get("backup_type", "both")
+    if backup_type not in ("rsc", "backup", "both"):
+        backup_type = "both"
+
+    router = db.get_router_by_id(router_id, user["id"])
+    if not router:
+        raise HTTPException(status_code=404, detail="Router tidak ditemukan")
+
+    try:
+        record = backup_service.perform_router_backup(
+            user_id=user["id"],
+            router_id=router_id,
+            backup_type=backup_type,
+            trigger_type="manual",
+        )
+        ip = request.client.host if request and request.client else None
+        db.log_audit(
+            user_id=user["id"],
+            action="BACKUP_MANUAL",
+            endpoint="/api/backups/run",
+            target=router.get("name"),
+            details={"backup_id": record.get("id"), "filename": record.get("filename"), "status": record.get("status")},
+            ip_address=ip,
+        )
+        if record.get("status") == "failed":
+            raise HTTPException(status_code=500, detail=f"Gagal melakukan backup: {record.get('error_message')}")
+        return record
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error saat backup: {str(e)}")
+
+
+@router.get("/backups/settings")
+def get_backup_settings(user: dict = Depends(get_current_user)):
+    """Get weekly auto backup settings."""
+    return db.get_backup_settings(user["id"])
+
+
+@router.put("/backups/settings")
+def update_backup_settings(
+    payload: dict = Body(...),
+    request: Request = None,
+    user: dict = Depends(get_current_user),
+):
+    """Update weekly auto backup settings."""
+    enabled = bool(payload.get("enabled", True))
+    schedule_day = int(payload.get("schedule_day", 6))  # 0=Monday ... 6=Sunday
+    schedule_hour = int(payload.get("schedule_hour", 2))
+    schedule_minute = int(payload.get("schedule_minute", 0))
+    backup_type = str(payload.get("backup_type", "both"))
+    retention_count = int(payload.get("retention_count", 8))
+
+    res = db.update_backup_settings(
+        user_id=user["id"],
+        enabled=enabled,
+        schedule_day=schedule_day,
+        schedule_hour=schedule_hour,
+        schedule_minute=schedule_minute,
+        backup_type=backup_type,
+        retention_count=retention_count,
+    )
+    # Recalculate next_run_at
+    next_run = backup_service.compute_next_run(schedule_day, schedule_hour, schedule_minute)
+    db.update_backup_schedule_timestamps(user["id"], next_run_at=next_run)
+    res["next_run_at"] = next_run.isoformat()
+
+    ip = request.client.host if request and request.client else None
+    db.log_audit(
+        user_id=user["id"],
+        action="BACKUP_SETTINGS_UPDATE",
+        endpoint="/api/backups/settings",
+        target="Backup Scheduler",
+        details=payload,
+        ip_address=ip,
+    )
+    return res
+
+
+@router.get("/backups/stats")
+def get_backup_stats(user: dict = Depends(get_current_user)):
+    """Get backup storage and summary statistics."""
+    return db.get_backup_stats(user["id"])
+
+
+@router.get("/backups/{backup_id}/download")
+def download_backup_file(backup_id: int, user: dict = Depends(get_current_user)):
+    """Download backup file directly."""
+    record = db.get_backup_by_id(backup_id, user["id"])
+    if not record or not record.get("file_path"):
+        raise HTTPException(status_code=404, detail="File backup tidak ditemukan di database")
+    
+    file_path = record["file_path"]
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File fisik backup tidak ditemukan di penyimpanan server")
+    
+    filename = record.get("filename") or os.path.basename(file_path)
+    return FileResponse(
+        path=file_path,
+        filename=filename,
+        media_type="application/octet-stream",
+    )
+
+
+@router.get("/backups/{backup_id}/preview")
+def preview_backup_file(backup_id: int, user: dict = Depends(get_current_user)):
+    """Preview readable text for .rsc script backup."""
+    record = db.get_backup_by_id(backup_id, user["id"])
+    if not record or not record.get("file_path"):
+        raise HTTPException(status_code=404, detail="Backup record not found")
+    
+    file_path = record["file_path"]
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File tidak ditemukan di server")
+    
+    if not file_path.endswith(".rsc"):
+        return {
+            "is_text": False,
+            "filename": record["filename"],
+            "message": "File ini adalah binary backup / zip. Hanya file script .rsc yang dapat dipratinjau dalam teks.",
+        }
+
+    try:
+        # Read up to 100KB for preview safety
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read(102400)
+            is_truncated = f.read(1) != ""
+        return {
+            "is_text": True,
+            "filename": record["filename"],
+            "content": content,
+            "truncated": is_truncated,
+            "size": record.get("file_size"),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal membaca file: {str(e)}")
+
+
+@router.delete("/backups/{backup_id}")
+def delete_backup(backup_id: int, request: Request = None, user: dict = Depends(get_current_user)):
+    """Delete backup from filesystem and database."""
+    record = db.get_backup_by_id(backup_id, user["id"])
+    if not record:
+        raise HTTPException(status_code=404, detail="Backup tidak ditemukan")
+
+    file_path = record.get("file_path")
+    if file_path and os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except Exception as e:
+            print("Warning: unable to delete physical file:", e)
+
+    deleted = db.delete_backup_record(backup_id, user["id"])
+    ip = request.client.host if request and request.client else None
+    db.log_audit(
+        user_id=user["id"],
+        action="BACKUP_DELETE",
+        endpoint=f"/api/backups/{backup_id}",
+        target=record.get("filename"),
+        details={"backup_id": backup_id, "filename": record.get("filename")},
+        ip_address=ip,
+    )
+    return {"success": True, "message": "File backup berhasil dihapus", "record": deleted}
+
 
 
 

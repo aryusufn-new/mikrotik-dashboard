@@ -17,6 +17,7 @@ import CustomerMonitor from './pages/CustomerMonitor'
 import ConfigPage from './pages/ConfigPage'
 import NetworkTopology from './pages/NetworkTopology'
 import AdminLogs from './pages/AdminLogs'
+import BackupPage from './pages/BackupPage'
 
 function Wrap({ children }) {
   return <ErrorBoundary>{children}</ErrorBoundary>
@@ -56,6 +57,7 @@ export default function App() {
                 <Route path="/customers" element={<Wrap><CustomerMonitor /></Wrap>} />
                 <Route path="/topology" element={<Wrap><NetworkTopology /></Wrap>} />
                 <Route path="/config" element={<Wrap><ConfigPage /></Wrap>} />
+                <Route path="/backups" element={<Wrap><BackupPage /></Wrap>} />
                 <Route path="/admin/logs" element={<Wrap><AdminLogs /></Wrap>} />
                 <Route path="*" element={<Navigate to="/noc" replace />} />
               </Route>

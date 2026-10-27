@@ -18,6 +18,9 @@ services:
     environment:
       - JWT_SECRET=${JWT_SECRET}
       - DATABASE_URL=postgresql://mikrotik:${DB_PASSWORD}@mikrotik-db:5432/mikrotik_dev
+      - BACKUP_DIR=/app/backups
+    volumes:
+      - ./backups:/app/backups
     networks:
       - shared-db
       - dev-network
