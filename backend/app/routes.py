@@ -1443,12 +1443,14 @@ def trigger_backup(
             ip_address=ip,
         )
         if record.get("status") == "failed":
-            raise HTTPException(status_code=500, detail=f"Gagal melakukan backup: {record.get('error_message')}")
+            err_detail = record.get("error_message") or "Pencadangan gagal dari router (lihat log server)"
+            raise HTTPException(status_code=500, detail=f"Gagal melakukan backup: {err_detail}")
         return record
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error saat backup: {str(e)}")
+        err_msg = getattr(e, "message", None) or str(e) or repr(e)
+        raise HTTPException(status_code=500, detail=f"Error saat backup: {err_msg}")
 
 
 @router.get("/backups/settings")

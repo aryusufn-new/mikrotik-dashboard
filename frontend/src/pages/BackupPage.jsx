@@ -91,6 +91,7 @@ export default function BackupPage() {
   const [selectedTypeForRun, setSelectedTypeForRun] = useState('both')
   const [runningBackup, setRunningBackup] = useState(false)
   const [runSuccessMsg, setRunSuccessMsg] = useState(null)
+  const [runErrorMsg, setRunErrorMsg] = useState(null)
 
   // Delete state
   const [deletingId, setDeletingId] = useState(null)
@@ -144,6 +145,7 @@ export default function BackupPage() {
     if (!selectedRouterForRun) return
     setRunningBackup(true)
     setRunSuccessMsg(null)
+    setRunErrorMsg(null)
     setError(null)
     try {
       const res = await runBackup(Number(selectedRouterForRun), selectedTypeForRun)
@@ -156,10 +158,12 @@ export default function BackupPage() {
       setTimeout(() => {
         setShowRunModal(false)
         setRunSuccessMsg(null)
+        setRunErrorMsg(null)
       }, 1800)
     } catch (err) {
       console.error(err)
-      alert(err?.response?.data?.detail || (isEn ? 'Backup failed' : 'Pencadangan gagal'))
+      const detail = err?.response?.data?.detail || err?.message || (isEn ? 'Backup failed' : 'Pencadangan gagal')
+      setRunErrorMsg(detail)
     } finally {
       setRunningBackup(false)
     }
@@ -586,10 +590,14 @@ export default function BackupPage() {
           setSelectedRouter={setSelectedRouterForRun}
           selectedType={selectedTypeForRun}
           setSelectedType={setSelectedTypeForRun}
-          onClose={() => setShowRunModal(false)}
+          onClose={() => {
+            setShowRunModal(false)
+            setRunErrorMsg(null)
+          }}
           onRun={handleRunBackup}
           running={runningBackup}
           successMsg={runSuccessMsg}
+          errorMsg={runErrorMsg}
           isEn={isEn}
         />
       )}
@@ -631,6 +639,7 @@ function ManualBackupModal({
   onRun,
   running,
   successMsg,
+  errorMsg,
   isEn,
 }) {
   useEffect(() => {
@@ -678,6 +687,13 @@ function ManualBackupModal({
             </button>
           )}
         </div>
+
+        {errorMsg && (
+          <div className="mb-4 p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 text-xs flex items-start gap-2.5">
+            <AlertCircle size={16} className="shrink-0 mt-0.5 text-rose-500" />
+            <div className="flex-1 leading-relaxed break-words font-medium">{errorMsg}</div>
+          </div>
+        )}
 
         {successMsg ? (
           <div className="py-6 text-center space-y-3">
