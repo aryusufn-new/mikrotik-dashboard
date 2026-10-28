@@ -67,23 +67,38 @@ def _cleanup_remote_file(api, filename: str):
         print(f"Warning: unable to delete remote file {filename}:", e)
 
 
-def _wait_for_router_file(api, expected_name: str, timeout: int = 40) -> str:
-    """Wait for file to appear in RouterOS /file print and return its exact full name."""
+def _wait_for_router_file(api, expected_name: str, timeout: int = 60) -> str:
+    """Wait for file to appear in RouterOS /file print and finish writing."""
     start = time.time()
     base_name = os.path.basename(expected_name)
     file_path = api.path("file")
-    found_count = 0
+    prev_size = -1
+    stable_count = 0
 
     while time.time() - start < timeout:
         time.sleep(1)
         try:
             for f in file_path:
                 fname = f.get("name", "")
-                if fname.endswith(base_name):
-                    found_count += 1
-                    # Wait 2 seconds for router storage to finish writing buffer
-                    if found_count >= 2:
-                        return fname
+                if fname == base_name or fname.endswith("/" + base_name) or fname.endswith(base_name):
+                    try:
+                        curr_size = int(f.get("size", 0) or 0)
+                    except (ValueError, TypeError):
+                        curr_size = 0
+
+                    if curr_size > 0:
+                        if curr_size == prev_size:
+                            stable_count += 1
+                            if stable_count >= 1:
+                                return fname
+                        else:
+                            prev_size = curr_size
+                            stable_count = 0
+                    else:
+                        # Fallback if router doesn't report size
+                        stable_count += 1
+                        if stable_count >= 3:
+                            return fname
         except Exception as e:
             print("Warning polling file on router:", e)
 
@@ -108,12 +123,17 @@ def _trigger_rsc_export(api, clean_rname: str, ts_str: str) -> str:
     except Exception:
         pass
 
+    # RouterOS export command:
+    # 1. /export compact file="..." avoids requiring 'sensitive' policy on ROS v6 and v7.
+    # 2. If compact fails, fallback to standard /export file="...".
+    source = f':do {{ /export compact file="{export_base}" }} on-error={{ /export file="{export_base}" }}'
+
     # Add temporary script using Path.add
     script_id = None
     try:
         res = script_path.add(
             name=script_name,
-            source=f'/export file="{export_base}"',
+            source=source,
             policy="ftp,read,write,policy,test,password,sniff,sensitive",
             **{"dont-require-permissions": "yes"},
         )
@@ -122,11 +142,11 @@ def _trigger_rsc_export(api, clean_rname: str, ts_str: str) -> str:
         elif isinstance(res, dict):
             script_id = res.get(".id") or res.get("ret")
     except Exception as e:
-        print("Script add with dont-require-permissions failed, falling back to default:", e)
+        print("Script add with custom policies failed, falling back to default:", e)
         try:
             res = script_path.add(
                 name=script_name,
-                source=f'/export file="{export_base}"',
+                source=source,
             )
             if isinstance(res, str):
                 script_id = res
@@ -146,15 +166,31 @@ def _trigger_rsc_export(api, clean_rname: str, ts_str: str) -> str:
         raise RuntimeError(f"Gagal membuat script '{script_name}' di RouterOS")
 
     try:
-        # Run script
+        # Run script - MUST consume the generator with tuple() so the command is actually sent!
+        run_err = None
         try:
-            script_path("run", **{".id": script_id})
-        except Exception:
-            api.rawCmd("/system/script/run", f"=.id={script_id}")
+            tuple(script_path("run", number=script_name))
+        except Exception as e1:
+            try:
+                tuple(script_path("run", number=script_id))
+            except Exception as e2:
+                try:
+                    tuple(api.rawCmd("/system/script/run", f"=number={script_name}"))
+                except Exception as e3:
+                    try:
+                        tuple(api.rawCmd("/system/script/run", f"=number={script_id}"))
+                    except Exception as e4:
+                        print("All script run attempts raised exceptions:", e4)
+                        run_err = e4
 
         # Wait for file while script runs
-        remote_filename = _wait_for_router_file(api, expected_file, timeout=40)
-        return remote_filename
+        try:
+            remote_filename = _wait_for_router_file(api, expected_file, timeout=60)
+            return remote_filename
+        except TimeoutError as te:
+            if run_err:
+                raise RuntimeError(f"Gagal menjalankan script export di router: {run_err}") from te
+            raise te
     finally:
         # Clean up script AFTER export file has been generated or failed
         try:
@@ -172,15 +208,17 @@ def _trigger_system_backup(api, clean_rname: str, ts_str: str) -> str:
 
     backup_path = api.path("system", "backup")
     try:
-        backup_path("save", name=backup_base, **{"dont-encrypt": "yes"})
+        # MUST consume the generator with tuple() so /system/backup/save is actually sent!
+        tuple(backup_path("save", name=backup_base, **{"dont-encrypt": "yes"}))
     except Exception as exc:
         print(f"Backup save with dont-encrypt failed ({exc}), retrying without encryption flag...")
         try:
-            backup_path("save", name=backup_base)
-        except Exception:
-            api.rawCmd("/system/backup/save", f"=name={backup_base}")
+            tuple(backup_path("save", name=backup_base))
+        except Exception as exc2:
+            print(f"Backup save failed ({exc2}), retrying rawCmd...")
+            tuple(api.rawCmd("/system/backup/save", f"=name={backup_base}"))
 
-    remote_filename = _wait_for_router_file(api, expected_file, timeout=40)
+    remote_filename = _wait_for_router_file(api, expected_file, timeout=60)
     return remote_filename
 
 
@@ -264,39 +302,32 @@ def perform_router_backup(
     remote_rsc = None
     remote_backup = None
     ftp_port = 21
+    temporarily_enabled_ftp = False
+    ftp_id = None
 
     try:
         # Step 1: Generate backup/export files on router via API
         with ros_api(user_id, router_id) as api:
             detected_port, ftp_disabled, ftp_id = _get_ftp_service_info(api)
             ftp_port = detected_port
-            temporarily_enabled_ftp = False
 
             if ftp_disabled and ftp_id:
                 try:
-                    api.rawCmd("/ip/service/enable", f"=.id={ftp_id}")
+                    tuple(api.rawCmd("/ip/service/enable", f"=.id={ftp_id}"))
                     temporarily_enabled_ftp = True
                     time.sleep(0.5)
                 except Exception as e:
                     print("Warning: failed to temporarily enable FTP service:", e)
 
-            try:
-                # 1. Generate RSC export if needed
-                if backup_type in ("rsc", "both"):
-                    remote_rsc = _trigger_rsc_export(api, clean_rname, ts_str)
-                    remote_files_to_clean.append(remote_rsc)
+            # 1. Generate RSC export if needed
+            if backup_type in ("rsc", "both"):
+                remote_rsc = _trigger_rsc_export(api, clean_rname, ts_str)
+                remote_files_to_clean.append(remote_rsc)
 
-                # 2. Generate System Backup if needed
-                if backup_type in ("backup", "both"):
-                    remote_backup = _trigger_system_backup(api, clean_rname, ts_str)
-                    remote_files_to_clean.append(remote_backup)
-
-            finally:
-                if temporarily_enabled_ftp and ftp_id:
-                    try:
-                        api.rawCmd("/ip/service/disable", f"=.id={ftp_id}")
-                    except Exception as e:
-                        print("Warning: failed to revert FTP service state:", e)
+            # 2. Generate System Backup if needed
+            if backup_type in ("backup", "both"):
+                remote_backup = _trigger_system_backup(api, clean_rname, ts_str)
+                remote_files_to_clean.append(remote_backup)
 
         # Step 2: Download files via FTP (outside ros_api context)
         local_rsc_path = None
@@ -394,6 +425,14 @@ def perform_router_backup(
             error_message=error_msg,
         )
         return record
+
+    finally:
+        if temporarily_enabled_ftp and ftp_id:
+            try:
+                with ros_api(user_id, router_id) as api:
+                    tuple(api.rawCmd("/ip/service/disable", f"=.id={ftp_id}"))
+            except Exception as e:
+                print("Warning: failed to revert FTP service state:", e)
 
 
 def compute_next_run(schedule_day: int, schedule_hour: int, schedule_minute: int) -> datetime:
