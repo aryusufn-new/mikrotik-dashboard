@@ -64,33 +64,23 @@ def _cleanup_remote_file(api, filename: str):
         print(f"Warning: unable to delete remote file {filename}:", e)
 
 
-def _wait_for_router_file(api, expected_name: str, timeout: int = 30) -> str:
+def _wait_for_router_file(api, expected_name: str, timeout: int = 40) -> str:
     """Wait for file to appear in RouterOS /file print and return its exact full name."""
     start = time.time()
     base_name = os.path.basename(expected_name)
-    last_size = -1
-    stable_count = 0
+    found_count = 0
 
     while time.time() - start < timeout:
         time.sleep(1)
         try:
-            files = list(api.rawCmd("/file/print", f"?name={base_name}"))
-            if not files:
-                files = list(api.rawCmd("/file/print", f"?name=flash/{base_name}"))
-            if not files:
-                all_files = list(api.rawCmd("/file/print"))
-                files = [f for f in all_files if f.get("name", "").endswith(base_name)]
-
-            if files:
-                curr_size = int(files[0].get("size", 0))
-                if curr_size > 0:
-                    if curr_size == last_size:
-                        stable_count += 1
-                        if stable_count >= 1:
-                            return files[0].get("name", base_name)
-                    else:
-                        last_size = curr_size
-                        stable_count = 0
+            # Query all files from router to support root, flash/, disk1/, pub/, etc.
+            all_files = list(api.rawCmd("/file/print"))
+            matching = [f for f in all_files if f.get("name", "").endswith(base_name)]
+            if matching:
+                found_count += 1
+                # Wait 2 seconds for router storage to finish writing buffer
+                if found_count >= 2:
+                    return matching[0].get("name", base_name)
         except Exception as e:
             print("Warning polling file on router:", e)
 
@@ -98,48 +88,55 @@ def _wait_for_router_file(api, expected_name: str, timeout: int = 30) -> str:
 
 
 def _trigger_rsc_export(api, clean_rname: str, ts_str: str) -> str:
-    """Trigger /export to file on router and wait for completion."""
+    """Trigger /export to file on router via script and wait for completion."""
     export_base = f"exp_{clean_rname}_{ts_str}"
     expected_file = f"{export_base}.rsc"
 
     _cleanup_remote_file(api, expected_file)
 
+    script_name = f"bexp_{int(time.time())}"
+    # Clean up leftover script if present
     try:
-        # Try direct export via API
-        api.rawCmd("/export", f"=file={export_base}")
-    except Exception as exc:
-        print(f"Direct /export command failed ({exc}), trying system script fallback...")
-        script_name = f"bexp_{int(time.time())}"
+        for s in api.rawCmd("/system/script/print", f"?name={script_name}"):
+            api.rawCmd("/system/script/remove", f"=.id={s['.id']}")
+    except Exception:
+        pass
+
+    # Add temporary script to execute console /export command
+    try:
+        api.rawCmd(
+            "/system/script/add",
+            f"=name={script_name}",
+            f'=source=/export file="{export_base}"',
+            "=dont-require-permissions=yes",
+        )
+    except Exception as e:
+        print("Script add with dont-require-permissions failed, falling back to default:", e)
+        api.rawCmd(
+            "/system/script/add",
+            f"=name={script_name}",
+            f'=source=/export file="{export_base}"',
+        )
+
+    try:
+        scripts = list(api.rawCmd("/system/script/print", f"?name={script_name}"))
+        if not scripts:
+            raise RuntimeError(f"Gagal membuat script '{script_name}' di RouterOS")
+        script_id = scripts[0][".id"]
+
+        # Run script using its .id
+        api.rawCmd("/system/script/run", f"=.id={script_id}")
+
+        # Wait for file while script runs (DO NOT delete script prematurely)
+        remote_filename = _wait_for_router_file(api, expected_file, timeout=40)
+        return remote_filename
+    finally:
+        # Clean up script AFTER export file has been generated or failed
         try:
             for s in api.rawCmd("/system/script/print", f"?name={script_name}"):
                 api.rawCmd("/system/script/remove", f"=.id={s['.id']}")
         except Exception:
             pass
-
-        # Add script with full policies
-        api.rawCmd(
-            "/system/script/add",
-            f"=name={script_name}",
-            f'=source=/export file="{export_base}"',
-            "=policy=ftp,read,write,policy,test,password,sniff,sensitive",
-        )
-        try:
-            scripts = list(api.rawCmd("/system/script/print", f"?name={script_name}"))
-            if not scripts:
-                raise RuntimeError(f"Gagal membuat script {script_name} di RouterOS")
-            script_id = scripts[0][".id"]
-            api.rawCmd("/system/script/run", f"=.id={script_id}")
-        finally:
-            time.sleep(1)
-            try:
-                scripts = list(api.rawCmd("/system/script/print", f"?name={script_name}"))
-                if scripts:
-                    api.rawCmd("/system/script/remove", f"=.id={scripts[0]['.id']}")
-            except Exception:
-                pass
-
-    remote_filename = _wait_for_router_file(api, expected_file, timeout=30)
-    return remote_filename
 
 
 def _trigger_system_backup(api, clean_rname: str, ts_str: str) -> str:
