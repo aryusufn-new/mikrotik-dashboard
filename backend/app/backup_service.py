@@ -52,14 +52,17 @@ def _get_ftp_service_info(api) -> tuple[int, bool, str | None]:
 
 
 def _cleanup_remote_file(api, filename: str):
-    """Remove file from RouterOS /file by name."""
+    """Remove file from RouterOS /file by name using Path API."""
     try:
         base = os.path.basename(filename)
-        for f in api.rawCmd("/file/print", f"?name={filename}"):
-            api.rawCmd("/file/remove", f"=.id={f['.id']}")
-        if base != filename:
-            for f in api.rawCmd("/file/print", f"?name={base}"):
-                api.rawCmd("/file/remove", f"=.id={f['.id']}")
+        file_path = api.path("file")
+        for f in file_path:
+            fname = f.get("name", "")
+            if fname == filename or fname.endswith(base):
+                try:
+                    file_path.remove(f[".id"])
+                except Exception:
+                    pass
     except Exception as e:
         print(f"Warning: unable to delete remote file {filename}:", e)
 
@@ -68,19 +71,19 @@ def _wait_for_router_file(api, expected_name: str, timeout: int = 40) -> str:
     """Wait for file to appear in RouterOS /file print and return its exact full name."""
     start = time.time()
     base_name = os.path.basename(expected_name)
+    file_path = api.path("file")
     found_count = 0
 
     while time.time() - start < timeout:
         time.sleep(1)
         try:
-            # Query all files from router to support root, flash/, disk1/, pub/, etc.
-            all_files = list(api.rawCmd("/file/print"))
-            matching = [f for f in all_files if f.get("name", "").endswith(base_name)]
-            if matching:
-                found_count += 1
-                # Wait 2 seconds for router storage to finish writing buffer
-                if found_count >= 2:
-                    return matching[0].get("name", base_name)
+            for f in file_path:
+                fname = f.get("name", "")
+                if fname.endswith(base_name):
+                    found_count += 1
+                    # Wait 2 seconds for router storage to finish writing buffer
+                    if found_count >= 2:
+                        return fname
         except Exception as e:
             print("Warning polling file on router:", e)
 
@@ -95,46 +98,67 @@ def _trigger_rsc_export(api, clean_rname: str, ts_str: str) -> str:
     _cleanup_remote_file(api, expected_file)
 
     script_name = f"bexp_{int(time.time())}"
-    # Clean up leftover script if present
+    script_path = api.path("system", "script")
+
+    # Clean up prior script if any
     try:
-        for s in api.rawCmd("/system/script/print", f"?name={script_name}"):
-            api.rawCmd("/system/script/remove", f"=.id={s['.id']}")
+        for s in script_path:
+            if s.get("name") == script_name:
+                script_path.remove(s[".id"])
     except Exception:
         pass
 
-    # Add temporary script to execute console /export command
+    # Add temporary script using Path.add
+    script_id = None
     try:
-        api.rawCmd(
-            "/system/script/add",
-            f"=name={script_name}",
-            f'=source=/export file="{export_base}"',
-            "=dont-require-permissions=yes",
+        res = script_path.add(
+            name=script_name,
+            source=f'/export file="{export_base}"',
+            policy="ftp,read,write,policy,test,password,sniff,sensitive",
+            **{"dont-require-permissions": "yes"},
         )
+        if isinstance(res, str):
+            script_id = res
+        elif isinstance(res, dict):
+            script_id = res.get(".id") or res.get("ret")
     except Exception as e:
         print("Script add with dont-require-permissions failed, falling back to default:", e)
-        api.rawCmd(
-            "/system/script/add",
-            f"=name={script_name}",
-            f'=source=/export file="{export_base}"',
-        )
+        try:
+            res = script_path.add(
+                name=script_name,
+                source=f'/export file="{export_base}"',
+            )
+            if isinstance(res, str):
+                script_id = res
+            elif isinstance(res, dict):
+                script_id = res.get(".id") or res.get("ret")
+        except Exception as e2:
+            print("Standard script add failed:", e2)
+
+    # If script_id was not returned directly, find it by iterating script_path
+    if not script_id:
+        for s in script_path:
+            if s.get("name") == script_name:
+                script_id = s.get(".id")
+                break
+
+    if not script_id:
+        raise RuntimeError(f"Gagal membuat script '{script_name}' di RouterOS")
 
     try:
-        scripts = list(api.rawCmd("/system/script/print", f"?name={script_name}"))
-        if not scripts:
-            raise RuntimeError(f"Gagal membuat script '{script_name}' di RouterOS")
-        script_id = scripts[0][".id"]
+        # Run script
+        try:
+            script_path("run", **{".id": script_id})
+        except Exception:
+            api.rawCmd("/system/script/run", f"=.id={script_id}")
 
-        # Run script using its .id
-        api.rawCmd("/system/script/run", f"=.id={script_id}")
-
-        # Wait for file while script runs (DO NOT delete script prematurely)
+        # Wait for file while script runs
         remote_filename = _wait_for_router_file(api, expected_file, timeout=40)
         return remote_filename
     finally:
         # Clean up script AFTER export file has been generated or failed
         try:
-            for s in api.rawCmd("/system/script/print", f"?name={script_name}"):
-                api.rawCmd("/system/script/remove", f"=.id={s['.id']}")
+            script_path.remove(script_id)
         except Exception:
             pass
 
@@ -146,20 +170,17 @@ def _trigger_system_backup(api, clean_rname: str, ts_str: str) -> str:
 
     _cleanup_remote_file(api, expected_file)
 
+    backup_path = api.path("system", "backup")
     try:
-        api.rawCmd(
-            "/system/backup/save",
-            f"=name={backup_base}",
-            "=dont-encrypt=yes",
-        )
+        backup_path("save", name=backup_base, **{"dont-encrypt": "yes"})
     except Exception as exc:
-        print(f"/system/backup/save with dont-encrypt failed ({exc}), retrying without encryption flag...")
-        api.rawCmd(
-            "/system/backup/save",
-            f"=name={backup_base}",
-        )
+        print(f"Backup save with dont-encrypt failed ({exc}), retrying without encryption flag...")
+        try:
+            backup_path("save", name=backup_base)
+        except Exception:
+            api.rawCmd("/system/backup/save", f"=name={backup_base}")
 
-    remote_filename = _wait_for_router_file(api, expected_file, timeout=30)
+    remote_filename = _wait_for_router_file(api, expected_file, timeout=40)
     return remote_filename
 
 
