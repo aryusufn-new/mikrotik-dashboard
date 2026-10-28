@@ -99,8 +99,7 @@ def ros_api(user_id: int | None = None, router_id: int | None = None):
         yield api
     except (LibRouterosError, OSError, ConnectionError, BrokenPipeError):
         _pool.invalidate(router_id)
-        api = _pool.get(user_id, router_id)
-        yield api
+        raise
 
 
 def _path(api, *segments: str):

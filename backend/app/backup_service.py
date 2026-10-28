@@ -242,9 +242,16 @@ def perform_router_backup(
     final_filepath = ""
     final_type = backup_type
 
+    remote_files_to_clean = []
+    remote_rsc = None
+    remote_backup = None
+    ftp_port = 21
+
     try:
+        # Step 1: Generate backup/export files on router via API
         with ros_api(user_id, router_id) as api:
-            ftp_port, ftp_disabled, ftp_id = _get_ftp_service_info(api)
+            detected_port, ftp_disabled, ftp_id = _get_ftp_service_info(api)
+            ftp_port = detected_port
             temporarily_enabled_ftp = False
 
             if ftp_disabled and ftp_id:
@@ -257,22 +264,14 @@ def perform_router_backup(
 
             try:
                 # 1. Generate RSC export if needed
-                local_rsc_path = None
                 if backup_type in ("rsc", "both"):
                     remote_rsc = _trigger_rsc_export(api, clean_rname, ts_str)
-                    local_rsc_path = os.path.join(target_user_dir, os.path.basename(remote_rsc))
-                    _download_via_ftp(host, ftp_port, username, password, remote_rsc, local_rsc_path)
-                    temp_files.append(local_rsc_path)
-                    _cleanup_remote_file(api, remote_rsc)
+                    remote_files_to_clean.append(remote_rsc)
 
                 # 2. Generate System Backup if needed
-                local_backup_path = None
                 if backup_type in ("backup", "both"):
                     remote_backup = _trigger_system_backup(api, clean_rname, ts_str)
-                    local_backup_path = os.path.join(target_user_dir, os.path.basename(remote_backup))
-                    _download_via_ftp(host, ftp_port, username, password, remote_backup, local_backup_path)
-                    temp_files.append(local_backup_path)
-                    _cleanup_remote_file(api, remote_backup)
+                    remote_files_to_clean.append(remote_backup)
 
             finally:
                 if temporarily_enabled_ftp and ftp_id:
@@ -280,6 +279,28 @@ def perform_router_backup(
                         api.rawCmd("/ip/service/disable", f"=.id={ftp_id}")
                     except Exception as e:
                         print("Warning: failed to revert FTP service state:", e)
+
+        # Step 2: Download files via FTP (outside ros_api context)
+        local_rsc_path = None
+        if remote_rsc:
+            local_rsc_path = os.path.join(target_user_dir, os.path.basename(remote_rsc))
+            _download_via_ftp(host, ftp_port, username, password, remote_rsc, local_rsc_path)
+            temp_files.append(local_rsc_path)
+
+        local_backup_path = None
+        if remote_backup:
+            local_backup_path = os.path.join(target_user_dir, os.path.basename(remote_backup))
+            _download_via_ftp(host, ftp_port, username, password, remote_backup, local_backup_path)
+            temp_files.append(local_backup_path)
+
+        # Step 3: Clean up remote files on router
+        if remote_files_to_clean:
+            try:
+                with ros_api(user_id, router_id) as api:
+                    for rf in remote_files_to_clean:
+                        _cleanup_remote_file(api, rf)
+            except Exception as clean_err:
+                print("Warning cleaning remote files on router:", clean_err)
 
         # 3. Determine final file
         if backup_type == "both" and local_rsc_path and local_backup_path:
