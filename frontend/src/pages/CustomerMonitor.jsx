@@ -1066,7 +1066,7 @@ function SyncOnuToPppoeModal({ isOpen, onClose, customer, secrets, activeSession
 }
 
 // ── Modals: Preview & Confirmation for PPPoE Auto-Sync ───────
-function SyncPreviewModal({ isOpen, onClose, previewData, onApplySuccess }) {
+function SyncPreviewModal({ isOpen, onClose, previewData, onApplySuccess, onRefresh, refreshing }) {
   if (!isOpen || !previewData) return null
 
   const [items, setItems] = useState(previewData.items || [])
@@ -1218,12 +1218,26 @@ function SyncPreviewModal({ isOpen, onClose, previewData, onApplySuccess }) {
               Verifikasi usulan kecocokan akun PPPoE MikroTik ke ONU OLT sebelum disimpan ke database.
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-          >
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            {onRefresh && (
+              <button
+                type="button"
+                onClick={onRefresh}
+                disabled={refreshing}
+                className="px-3 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 text-xs font-semibold text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5 transition disabled:opacity-60 shadow-sm"
+                title="Muat ulang data akun PPPoE terbaru dari MikroTik jika Anda baru saja mengubah komentar/secret di Winbox"
+              >
+                <RefreshCw size={13} className={refreshing ? 'animate-spin text-indigo-600' : 'text-indigo-600'} />
+                <span>{refreshing ? 'Memuat...' : 'Muat Ulang MikroTik'}</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* Stats Pill Bar */}
@@ -2304,6 +2318,8 @@ export default function CustomerMonitor() {
         isOpen={syncPreviewOpen}
         onClose={() => setSyncPreviewOpen(false)}
         previewData={syncPreviewData}
+        onRefresh={handleAutoSyncAll}
+        refreshing={autoSyncingAll}
         onApplySuccess={loadData}
       />
     </div>

@@ -1035,6 +1035,10 @@ def auto_scan_all_customers(
                 name_tokens = [p for p in desc_parts if _norm(p) not in code_tokens]
                 norm_name_part = _norm(" ".join(name_tokens)) if name_tokens else ""
 
+                norm_base = _norm(base_name) if base_name else ""
+                norm_pon = _norm(pon_port)
+                norm_onu_id = f"onu{onu_id_int}"
+
                 best_desc_sec = None
                 best_desc_score = 0
                 best_desc_reason = ""
@@ -1061,9 +1065,24 @@ def auto_scan_all_customers(
                         score = 100
                         reason = "exact_comment"
                         label = f"🟢 100% Cocok Comment ({comment})"
+                    elif norm_base and len(norm_base) >= 3 and (norm_base == nc):
+                        score = 99
+                        reason = "exact_base_comment"
+                        label = f"🟢 100% Cocok Comment ({comment})"
+                    elif norm_base and len(norm_base) >= 3 and (norm_base == nu):
+                        score = 99
+                        reason = "exact_base_username"
+                        label = f"🟢 100% Cocok Username ({uname})"
 
-                    # 2. Code prefix match (e.g. C027240406 in username or comment)
-                    elif code_tokens:
+                    # 2. Port & ONU ID pattern in comment (e.g. "PON 2 #16", "PON 2 ONU 16", "PON2 ONU16")
+                    elif nc and norm_pon and norm_onu_id:
+                        if (norm_pon in nc and norm_onu_id in nc) or (f"{norm_pon}{norm_onu_id}" in nc):
+                            score = 95
+                            reason = "port_onu_in_comment"
+                            label = f"🟢 95% Cocok Port/ONU ({pon_port} #{onu_id_int}) di Comment ({comment})"
+
+                    # 3. Code prefix match (e.g. C027240406 in username or comment)
+                    if not score and code_tokens:
                         for ct in code_tokens:
                             if len(ct) >= 4:
                                 if ct == nu or (len(ct) >= 5 and ct in nu):
@@ -1077,7 +1096,7 @@ def auto_scan_all_customers(
                                     label = f"🟢 100% Cocok Kode ID ({ct.upper()}) di Comment"
                                     break
 
-                    # 3. Name part exact or substring in description
+                    # 4. Name part exact or substring in description
                     if not score:
                         if norm_name_part and len(norm_name_part) >= 4 and (norm_name_part == nu or norm_name_part == nc):
                             score = 92
@@ -1092,7 +1111,7 @@ def auto_scan_all_customers(
                             reason = "comment_in_desc"
                             label = f"🟢 90% Comment ({comment}) Ada di Deskripsi OLT"
 
-                    # 4. Token overlap / partial match
+                    # 5. Token overlap / partial match
                     if not score and len(nu) >= 4:
                         if nu in norm_td or (len(norm_td) >= 4 and norm_td in nu):
                             score = 75
@@ -1150,7 +1169,11 @@ def auto_scan_all_customers(
                         sec_cid = _clean(sec.get("caller_id") or sec.get("caller-id"))
                         sec_comment = _clean(sec.get("comment"))
                         sec_name = _clean(uname)
-                        if (sec_cid and clean_sn == sec_cid) or (clean_sn == sec_name) or (clean_sn in sec_comment):
+                        if (
+                            (sec_cid and (clean_sn == sec_cid or clean_sn[-12:] == sec_cid or clean_sn[-6:] == sec_cid[-6:]))
+                            or (clean_sn == sec_name or (len(clean_sn) >= 6 and clean_sn[-6:] == sec_name[-6:]))
+                            or (sec_comment and (clean_sn in sec_comment or (len(clean_sn) >= 8 and clean_sn[-8:] in sec_comment)))
+                        ):
                             matched_sec = sec
                             break
 
