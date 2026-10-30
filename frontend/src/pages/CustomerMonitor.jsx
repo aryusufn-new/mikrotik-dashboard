@@ -1090,6 +1090,7 @@ function OltManagementModal({ isOpen, onClose, olts, onReload, routers = [], act
                 >
                   <option value="cdata">C-Data (EPON / GPON)</option>
                   <option value="vsol">VSOL (V1600 Series)</option>
+                  <option value="hioso">HIOSO (HA7302 / HA7304 / HA7308 / GPON)</option>
                   <option value="hsgq">HSGQ (EPON / GPON)</option>
                   <option value="generic">Generic IEEE EPON / GPON</option>
                 </select>

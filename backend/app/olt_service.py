@@ -560,10 +560,12 @@ def fetch_onu_optical(
     snmp_dist_val = None
     query_success = False
 
-    if brand in ("vsol", "cdata") or "cdata" in str(olt.get("name") or "").lower():
+    if brand in ("vsol", "cdata", "hioso") or any(b in str(olt.get("name") or "").lower() for b in ("cdata", "hioso")):
         dev_idx = (port_num << 8) | onu_id
-        # Candidate OIDs for RX optical power across C-Data GPON (NSCRTV & Enterprise), C-Data EPON, VSOL, and IEEE EPON
+        # Candidate OIDs for RX optical power across C-Data GPON (NSCRTV & Enterprise), C-Data EPON, VSOL, HIOSO, and IEEE EPON
         rx_candidates = [
+            f"{IEEE_EPON_RX}.{port_num}.{onu_id}",
+            f"{IEEE_EPON_RX}.{dev_idx}",
             f"{NSCRTV_GPON_OPT_RX}.{dev_idx}.1.1",
             f"{NSCRTV_GPON_OPT_RX}.{onu_id}.1.1",
             f"{NSCRTV_GPON_OPT_RX}.{port_num}.{onu_id}.1.1",
@@ -734,6 +736,15 @@ def scan_olt_onus(olt: dict[str, Any]) -> list[dict[str, Any]]:
                 CDATA_GPON_ONU_SN,
                 CDATA_EPON_ONU_MAC,
                 IEEE_EPON_MAC,
+                IF_DESCR,
+            ]
+        elif brand == "hioso":
+            candidate_oids = [
+                IEEE_EPON_MAC,                     # .1.3.6.1.4.1.17409.2.3.4.1.1.2 (Standard CTC/IEEE EPON MAC on HIOSO)
+                IEEE_EPON_STATUS,                  # .1.3.6.1.4.1.17409.2.3.4.1.1.3
+                NSCRTV_GPON_ONU_SN,                # .1.3.6.1.4.1.17409.2.8.4.1.1.3 (HIOSO GPON)
+                CDATA_EPON_ONU_MAC,
+                VSOL_ONU_SN,
                 IF_DESCR,
             ]
         elif brand == "hsgq":
@@ -937,7 +948,7 @@ def scan_olt_onus(olt: dict[str, Any]) -> list[dict[str, Any]]:
             })
         return results
 
-    prefix = "VSOL" if brand == "vsol" else ("HSGQ" if brand == "hsgq" else "GPON")
+    prefix = "HIOS" if brand == "hioso" else ("VSOL" if brand == "vsol" else ("HSGQ" if brand == "hsgq" else "GPON"))
     results = []
     for port_idx in range(1, min(ports_count + 1, 9)):
         port_name = f"PON {port_idx}"
@@ -952,7 +963,7 @@ def scan_olt_onus(olt: dict[str, Any]) -> list[dict[str, Any]]:
                 "pon_port": port_name,
                 "onu_id": onu_idx,
                 "onu_sn": sn,
-                "onu_model": "V2801SG" if brand == "vsol" else "ONT-GE",
+                "onu_model": "HA7200" if brand == "hioso" else ("V2801SG" if brand == "vsol" else "ONT-GE"),
                 "description": f"Customer PON {port_idx}:{onu_idx}",
                 "rx_power": optical["rx_power"],
                 "tx_power": optical["tx_power"],
