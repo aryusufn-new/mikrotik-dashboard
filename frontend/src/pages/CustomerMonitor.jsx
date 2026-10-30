@@ -120,6 +120,25 @@ function getOpticalTier(rxPower) {
   }
 }
 
+// Convert 16-hex GPON SN to standard vendor prefix (e.g. 48575443AC227AAC -> HWTCAC227AAC)
+function formatGponSn(val) {
+  if (!val || typeof val !== 'string') return val || ''
+  const s = val.replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+  if (s.length === 16 && /^[0-9A-F]{16}$/i.test(s)) {
+    try {
+      const hexPrefix = s.slice(0, 8)
+      let ascii = ''
+      for (let i = 0; i < 8; i += 2) {
+        ascii += String.fromCharCode(parseInt(hexPrefix.substr(i, 2), 16))
+      }
+      if (/^[A-Z0-9]{4}$/.test(ascii)) {
+        return ascii + s.slice(8)
+      }
+    } catch (_) {}
+  }
+  return s
+}
+
 // ── Modals: GenieACS TR-069 Integration (Auto-Map SN <-> PPPoE) ──
 function GenieAcsModal({ isOpen, onClose, onSyncComplete }) {
   const [loading, setLoading] = useState(false)
@@ -254,7 +273,10 @@ function GenieAcsModal({ isOpen, onClose, onSyncComplete }) {
     const q = deviceSearch.toLowerCase()
     return devices.filter(
       (d) =>
+        formatGponSn(d.clean_sn || d.raw_sn)?.toLowerCase().includes(q) ||
         d.clean_sn?.toLowerCase().includes(q) ||
+        d.raw_sn?.toLowerCase().includes(q) ||
+        d.hex_sn?.toLowerCase().includes(q) ||
         d.pppoe_username?.toLowerCase().includes(q) ||
         d.model?.toLowerCase().includes(q) ||
         d.ip?.toLowerCase().includes(q)
@@ -531,8 +553,8 @@ function GenieAcsModal({ isOpen, onClose, onSyncComplete }) {
                     ) : (
                       filteredDevices.map((d, i) => (
                         <tr key={d.id || i} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                          <td className="p-2.5 font-bold text-slate-900 dark:text-white">
-                            {d.clean_sn || (d.raw_sn && !d.raw_sn.startsWith('{') ? d.raw_sn : (d.id?.split('-')?.pop() || d.id))}
+                          <td className="p-2.5 font-bold text-slate-900 dark:text-white" title={d.hex_sn || d.raw_sn || ''}>
+                            {formatGponSn(d.clean_sn || (d.raw_sn && !d.raw_sn.startsWith('{') ? d.raw_sn : (d.id?.split('-')?.pop() || d.id)))}
                           </td>
                           <td className="p-2.5 font-sans">
                             {d.pppoe_username && !d.pppoe_username.startsWith('{') ? (

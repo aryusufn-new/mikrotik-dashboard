@@ -807,7 +807,16 @@ def auto_scan_all_customers(
     def _clean(val) -> str:
         if not val:
             return ""
-        return re.sub(r"[^A-Za-z0-9]", "", str(val)).upper()
+        s = re.sub(r"[^A-Za-z0-9]", "", str(val)).upper()
+        if len(s) == 16 and all(c in "0123456789ABCDEF" for c in s):
+            try:
+                b = bytes.fromhex(s)
+                prefix = b[:4].decode("ascii")
+                if prefix.isalnum() and prefix.isupper():
+                    return f"{prefix}{s[8:]}"
+            except Exception:
+                pass
+        return s
 
     try:
         # 1. Clean existing duplicates and orphaned customers from deleted OLTs

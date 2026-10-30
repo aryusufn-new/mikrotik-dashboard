@@ -37,8 +37,28 @@ def build_headers(auth_enabled: bool = False, username: str = "", password: str 
     return headers
 
 
+def format_gpon_sn(val: Any) -> str:
+    """
+    Format 16-hex GPON Serial Number (e.g. 48575443AC227AAC)
+    into standard 4-character ASCII Vendor prefix (e.g. HWTCAC227AAC).
+    Supports Huawei (HWTC), ZTE (ZTEG), VSOL, Fiberhome (FHTT), C-Data (CIOT), etc.
+    """
+    if not val:
+        return ""
+    s = re.sub(r"[^A-Za-z0-9]", "", str(val)).upper()
+    if len(s) == 16 and all(c in "0123456789ABCDEF" for c in s):
+        try:
+            b = bytes.fromhex(s)
+            prefix = b[:4].decode("ascii")
+            if prefix.isalnum() and prefix.isupper():
+                return f"{prefix}{s[8:]}"
+        except Exception:
+            pass
+    return s
+
+
 def _clean_sn(val: Any) -> str:
-    """Normalize serial number (alphanumeric uppercase)."""
+    """Normalize serial number (alphanumeric uppercase with GPON vendor prefix conversion)."""
     if not val:
         return ""
     if isinstance(val, dict):
@@ -46,7 +66,8 @@ def _clean_sn(val: Any) -> str:
     s = str(val).strip()
     if s.startswith("{") and s.endswith("}"):
         return ""
-    return re.sub(r"[^A-Za-z0-9]", "", s).upper()
+    clean = re.sub(r"[^A-Za-z0-9]", "", s).upper()
+    return format_gpon_sn(clean)
 
 
 def _get_val(node: Any) -> Any:
@@ -243,14 +264,18 @@ def parse_device(device: dict) -> dict:
     if isinstance(raw_sn, dict) or str(raw_sn).startswith("{"):
         raw_sn = clean_sn
 
+    raw_sn_formatted = format_gpon_sn(raw_sn)
+    hex_sn = re.sub(r"[^A-Za-z0-9]", "", str(raw_sn)).upper()
+
     usernames, extra_info = _extract_ppp_usernames_and_info(device)
     primary_username = usernames[0] if usernames else ""
     last_inform = device.get("_lastInform") or device.get("_registered") or ""
 
     return {
         "id": raw_id,
-        "raw_sn": str(raw_sn),
+        "raw_sn": str(raw_sn_formatted or raw_sn),
         "clean_sn": clean_sn,
+        "hex_sn": hex_sn,
         "pppoe_username": primary_username,
         "all_usernames": usernames,
         "model": str(model or "ONU"),
@@ -389,10 +414,13 @@ def get_user_acs_mapping(user_id: int) -> dict[str, dict]:
         for dev in raw_devices:
             parsed = parse_device(dev)
             clean_sn = parsed["clean_sn"]
+            hex_sn = parsed.get("hex_sn")
             if not clean_sn:
                 continue
 
             mapping[clean_sn] = parsed
+            if hex_sn and hex_sn != clean_sn:
+                mapping[hex_sn] = parsed
 
             # Index suffixes for flexible matching
             if len(clean_sn) >= 12:
@@ -401,6 +429,9 @@ def get_user_acs_mapping(user_id: int) -> dict[str, dict]:
                 mapping[clean_sn[-8:]] = parsed
             if len(clean_sn) >= 6:
                 mapping[clean_sn[-6:]] = parsed
+
+            if hex_sn and len(hex_sn) >= 8:
+                mapping[hex_sn[-8:]] = parsed
 
             # Index MAC
             if parsed.get("mac"):
