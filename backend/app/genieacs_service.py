@@ -42,18 +42,24 @@ def _clean_sn(val: Any) -> str:
     if not val:
         return ""
     if isinstance(val, dict):
-        val = val.get("_value", "")
+        val = _get_val(val)
     s = str(val).strip()
+    if s.startswith("{") and s.endswith("}"):
+        return ""
     return re.sub(r"[^A-Za-z0-9]", "", s).upper()
 
 
 def _get_val(node: Any) -> Any:
-    """Extract primitive value from GenieACS node."""
+    """
+    Extract primitive value from GenieACS node.
+    Returns empty string if node is a GenieACS metadata dictionary without _value.
+    """
     if isinstance(node, dict):
         if "_value" in node:
-            return node["_value"]
+            return _get_val(node["_value"])
         if "value" in node:
-            return node["value"]
+            return _get_val(node["value"])
+        return ""
     return node
 
 
@@ -80,10 +86,10 @@ def _extract_ppp_usernames_and_info(obj: Any) -> Tuple[List[str], Dict[str, Any]
         val_str = str(val).strip() if val is not None else ""
 
         if ("wanpppconnection" in k_lower or "ppp.interface" in k_lower or "wanipconnection" in k_lower) and k_lower.endswith("username"):
-            if val_str and val_str not in usernames:
+            if val_str and val_str not in usernames and not val_str.startswith("{"):
                 usernames.append(val_str)
         elif k_lower.endswith(".username") and ("ppp" in k_lower or "wan" in k_lower):
-            if val_str and val_str not in usernames:
+            if val_str and val_str not in usernames and not val_str.startswith("{"):
                 usernames.append(val_str)
 
         if ("externalipaddress" in k_lower or "ipaddress" in k_lower) and val_str and not extra_info["ip"]:
@@ -91,7 +97,8 @@ def _extract_ppp_usernames_and_info(obj: Any) -> Tuple[List[str], Dict[str, Any]
                 extra_info["ip"] = val_str
 
         if "macaddress" in k_lower and val_str and not extra_info["mac"]:
-            extra_info["mac"] = val_str
+            if not val_str.startswith("{"):
+                extra_info["mac"] = val_str
 
         if ("rxpower" in k_lower or "opticalsignallevel" in k_lower or "rx_power" in k_lower) and val is not None:
             try:
@@ -114,7 +121,7 @@ def _extract_ppp_usernames_and_info(obj: Any) -> Tuple[List[str], Dict[str, Any]
                     uname_val = _get_val(val.get("Username") or val.get("username"))
                     if uname_val and str(uname_val).strip():
                         u_str = str(uname_val).strip()
-                        if u_str not in usernames:
+                        if u_str not in usernames and not u_str.startswith("{"):
                             usernames.append(u_str)
 
                     ip_val = _get_val(val.get("ExternalIPAddress") or val.get("externalIPAddress") or val.get("IPAddress"))
@@ -124,7 +131,7 @@ def _extract_ppp_usernames_and_info(obj: Any) -> Tuple[List[str], Dict[str, Any]
                             extra_info["ip"] = ip_str
 
                     status_val = _get_val(val.get("ConnectionStatus") or val.get("connectionStatus"))
-                    if status_val and not extra_info["connection_status"]:
+                    if status_val and not extra_info["connection_status"] and not str(status_val).startswith("{"):
                         extra_info["connection_status"] = str(status_val)
 
                 _recurse(val, current_path)
@@ -139,52 +146,102 @@ def _extract_ppp_usernames_and_info(obj: Any) -> Tuple[List[str], Dict[str, Any]
 
 def parse_device(device: dict) -> dict:
     """Parse a GenieACS device JSON into a clean structured dictionary."""
-    raw_id = str(device.get("_id") or "")
+    raw_id = str(device.get("_id") or "").strip()
+    dev_id_internal = device.get("_deviceId") or {}
     dev_id_obj = device.get("DeviceID") or {}
-    device_info = (
-        device.get("InternetGatewayDevice", {}).get("DeviceInfo", {})
-        or device.get("Device", {}).get("DeviceInfo", {})
-    )
+    device_info_igd = device.get("InternetGatewayDevice", {}).get("DeviceInfo", {}) or {}
+    device_info_dev = device.get("Device", {}).get("DeviceInfo", {}) or {}
 
-    raw_sn = (
-        _get_val(dev_id_obj.get("SerialNumber"))
-        or _get_val(device_info.get("SerialNumber"))
-        or device.get("DeviceID.SerialNumber")
-        or device.get("InternetGatewayDevice.DeviceInfo.SerialNumber")
-        or device.get("Device.DeviceInfo.SerialNumber")
-        or ""
-    )
+    # Extract Serial Number
+    sn_candidates = [
+        _get_val(dev_id_internal.get("_SerialNumber")),
+        _get_val(dev_id_internal.get("SerialNumber")),
+        _get_val(dev_id_obj.get("SerialNumber")),
+        _get_val(device_info_igd.get("SerialNumber")),
+        _get_val(device_info_dev.get("SerialNumber")),
+        _get_val(device.get("DeviceID.SerialNumber")),
+        _get_val(device.get("InternetGatewayDevice.DeviceInfo.SerialNumber")),
+        _get_val(device.get("Device.DeviceInfo.SerialNumber")),
+        _get_val(device.get("_deviceId._SerialNumber")),
+    ]
 
+    raw_sn = ""
+    for cand in sn_candidates:
+        if cand and isinstance(cand, (str, int)) and not str(cand).startswith("{"):
+            raw_sn = str(cand).strip()
+            break
+
+    # If raw_sn is empty, extract from GenieACS _id (e.g. "OUI-ProductClass-SerialNumber")
     if not raw_sn and raw_id:
         parts = raw_id.split("-")
         if len(parts) >= 3:
             raw_sn = parts[-1]
+        elif len(parts) == 2:
+            raw_sn = parts[1]
         else:
             raw_sn = raw_id
 
     clean_sn = _clean_sn(raw_sn)
 
-    model = (
-        _get_val(dev_id_obj.get("ProductClass"))
-        or _get_val(device_info.get("ModelName"))
-        or device.get("DeviceID.ProductClass")
-        or ""
-    )
+    # Extract ProductClass / Model
+    model_candidates = [
+        _get_val(dev_id_internal.get("_ProductClass")),
+        _get_val(dev_id_internal.get("ProductClass")),
+        _get_val(dev_id_obj.get("ProductClass")),
+        _get_val(device_info_igd.get("ModelName")),
+        _get_val(device_info_igd.get("ProductClass")),
+        _get_val(device_info_dev.get("ModelName")),
+        _get_val(device_info_dev.get("ProductClass")),
+        _get_val(device.get("DeviceID.ProductClass")),
+        _get_val(device.get("InternetGatewayDevice.DeviceInfo.ModelName")),
+        _get_val(device.get("Device.DeviceInfo.ModelName")),
+        _get_val(device.get("_deviceId._ProductClass")),
+    ]
+
+    model = ""
+    for cand in model_candidates:
+        if cand and isinstance(cand, (str, int)) and not str(cand).startswith("{"):
+            model = str(cand).strip()
+            break
+
     if not model and raw_id:
         parts = raw_id.split("-")
-        if len(parts) >= 2:
+        if len(parts) >= 3:
             model = parts[1]
+        elif len(parts) == 2:
+            model = parts[0]
 
-    manufacturer = (
-        _get_val(dev_id_obj.get("Manufacturer"))
-        or _get_val(device_info.get("Manufacturer"))
-        or device.get("DeviceID.Manufacturer")
-        or ""
-    )
+    # Extract Manufacturer
+    mfg_candidates = [
+        _get_val(dev_id_internal.get("_Manufacturer")),
+        _get_val(dev_id_internal.get("Manufacturer")),
+        _get_val(dev_id_obj.get("Manufacturer")),
+        _get_val(device_info_igd.get("Manufacturer")),
+        _get_val(device_info_dev.get("Manufacturer")),
+        _get_val(device.get("DeviceID.Manufacturer")),
+        _get_val(device.get("InternetGatewayDevice.DeviceInfo.Manufacturer")),
+        _get_val(device.get("Device.DeviceInfo.Manufacturer")),
+        _get_val(device.get("_deviceId._Manufacturer")),
+    ]
+
+    manufacturer = ""
+    for cand in mfg_candidates:
+        if cand and isinstance(cand, (str, int)) and not str(cand).startswith("{"):
+            manufacturer = str(cand).strip()
+            break
+
     if not manufacturer and raw_id:
         parts = raw_id.split("-")
-        if parts:
+        if len(parts) >= 3:
             manufacturer = parts[0]
+
+    # Final cleanup if any candidate leaked a dict string
+    if isinstance(model, dict) or str(model).startswith("{"):
+        model = "ONU"
+    if isinstance(manufacturer, dict) or str(manufacturer).startswith("{"):
+        manufacturer = ""
+    if isinstance(raw_sn, dict) or str(raw_sn).startswith("{"):
+        raw_sn = clean_sn
 
     usernames, extra_info = _extract_ppp_usernames_and_info(device)
     primary_username = usernames[0] if usernames else ""
@@ -269,7 +326,7 @@ def fetch_devices(
         return []
 
     projection = (
-        "_id,DeviceID,InternetGatewayDevice.WANDevice,Device.PPP,"
+        "_id,_deviceId,DeviceID,InternetGatewayDevice.WANDevice,Device.PPP,"
         "InternetGatewayDevice.LANDevice,Device.IP,InternetGatewayDevice.DeviceInfo,"
         "Device.DeviceInfo,_lastInform,_registered,_ip"
     )

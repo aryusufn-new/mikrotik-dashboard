@@ -532,10 +532,10 @@ function GenieAcsModal({ isOpen, onClose, onSyncComplete }) {
                       filteredDevices.map((d, i) => (
                         <tr key={d.id || i} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                           <td className="p-2.5 font-bold text-slate-900 dark:text-white">
-                            {d.clean_sn || d.raw_sn}
+                            {d.clean_sn || (d.raw_sn && !d.raw_sn.startsWith('{') ? d.raw_sn : (d.id?.split('-')?.pop() || d.id))}
                           </td>
                           <td className="p-2.5 font-sans">
-                            {d.pppoe_username ? (
+                            {d.pppoe_username && !d.pppoe_username.startsWith('{') ? (
                               <span className="font-mono font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                                 {d.pppoe_username}
                               </span>
@@ -544,7 +544,8 @@ function GenieAcsModal({ isOpen, onClose, onSyncComplete }) {
                             )}
                           </td>
                           <td className="p-2.5 font-sans text-slate-500">
-                            {d.manufacturer ? `${d.manufacturer} ` : ''}{d.model}
+                            {d.manufacturer && !d.manufacturer.startsWith('{') ? `${d.manufacturer} ` : ''}
+                            {d.model && !d.model.startsWith('{') ? d.model : 'ONU'}
                           </td>
                           <td className="p-2.5 text-slate-500">{d.ip || '-'}</td>
                           <td className="p-2.5 font-sans">
