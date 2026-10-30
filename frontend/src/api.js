@@ -174,6 +174,23 @@ export const downloadBackupFile = async (backupId, filename) => {
   window.URL.revokeObjectURL(url)
 }
 
+// ─── GenieACS TR-069 Integration APIs ───
+export const getGenieAcsSettings = () =>
+  http.get('/api/genieacs/settings').then(r => r.data)
+
+export const updateGenieAcsSettings = (data) =>
+  http.put('/api/genieacs/settings', data).then(r => r.data)
+
+export const testGenieAcsConnection = (data) =>
+  http.post('/api/genieacs/test', data).then(r => r.data)
+
+export const getGenieAcsDevices = () =>
+  http.get('/api/genieacs/devices').then(r => r.data)
+
+export const syncGenieAcsToCustomers = () =>
+  http.post('/api/genieacs/sync-to-customers', {}, { timeout: 60000 }).then(r => r.data)
+
+
 
 
 

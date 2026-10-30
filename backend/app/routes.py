@@ -981,6 +981,14 @@ def auto_scan_all_customers(
         except Exception as e:
             print("Warning: load existing customers failed:", e)
 
+        # Fetch GenieACS mapping (TR-069 Gold Standard: SN -> PPPoE Username)
+        genieacs_map = {}
+        try:
+            from . import genieacs_service
+            genieacs_map = genieacs_service.get_user_acs_mapping(user["id"])
+        except Exception as e:
+            print("Warning: get_user_acs_mapping failed in auto_scan:", e)
+
         for idx, onu in enumerate(onus):
             pon_port = str(onu.get("pon_port") or f"PON {(idx % 8) + 1}")
             try:
@@ -1002,6 +1010,7 @@ def auto_scan_all_customers(
             clean_desc, base_name = _extract_customer_name(onu_raw_name)
 
             # Match with MikroTik:
+            # Priority 0: GenieACS TR-069 Direct Hardware Link (100% Guaranteed)
             # Priority 1: OLT Description <-> MikroTik Username & Comment (Operator primary rule)
             # Priority 2: Active Session MAC <-> ONU SN (Hardware-Level 100%)
             # Priority 3: Secret Caller-ID / Comment <-> ONU SN (Hardware-Level 100%)
@@ -1018,9 +1027,29 @@ def auto_scan_all_customers(
             if not existing_uname and onu_sn:
                 existing_uname = existing_uname_by_sn.get(clean_sn) or ""
 
+            # ─── Priority 0: GenieACS TR-069 Direct Hardware Link (100% Guaranteed) ───
+            if clean_sn and genieacs_map:
+                acs_dev = (
+                    genieacs_map.get(clean_sn)
+                    or (genieacs_map.get(clean_sn[-12:]) if len(clean_sn) >= 12 else None)
+                    or (genieacs_map.get(clean_sn[-8:]) if len(clean_sn) >= 8 else None)
+                    or (genieacs_map.get(clean_sn[-6:]) if len(clean_sn) >= 6 else None)
+                )
+                if acs_dev and acs_dev.get("pppoe_username"):
+                    acs_u = acs_dev["pppoe_username"]
+                    sec = secret_by_name.get(acs_u, {})
+                    matched_uname = acs_u
+                    matched_cust_name = sec.get("comment") or clean_desc or acs_u
+                    matched_profile = sec.get("profile") or "20 Mbps"
+                    match_reason = "genieacs"
+                    confidence = "high"
+                    confidence_label = f"🟢 100% Cocok GenieACS ({acs_u})"
+                    if acs_dev.get("model") and (not onu_model or onu_model == "V2801SG"):
+                        onu_model = acs_dev["model"]
+
             # ─── Priority 1: OLT Description <-> MikroTik (Username or Comment) ───
             target_desc = clean_desc or onu_raw_name
-            if target_desc and target_desc.upper() not in ("N/A", "NA", "NULL", "NONE", "-"):
+            if not matched_uname and target_desc and target_desc.upper() not in ("N/A", "NA", "NULL", "NONE", "-"):
                 norm_td = _norm(target_desc)
                 desc_parts = [p.strip() for p in re.split(r'[-_/\s]+', target_desc) if p.strip()]
 
@@ -1606,6 +1635,187 @@ def delete_backup(backup_id: int, request: Request = None, user: dict = Depends(
         ip_address=ip,
     )
     return {"success": True, "message": "File backup berhasil dihapus", "record": deleted}
+
+
+# ─── GenieACS Integration Endpoints ───
+
+class GenieAcsSettingsUpdate(BaseModel):
+    enabled: bool = True
+    url: str = "http://192.168.1.10:7557"
+    auth_enabled: bool = False
+    username: Optional[str] = ""
+    password: Optional[str] = ""
+    timeout_sec: int = 10
+
+
+class GenieAcsTestRequest(BaseModel):
+    url: Optional[str] = None
+    auth_enabled: Optional[bool] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    timeout_sec: Optional[int] = 6
+
+
+@router.get("/genieacs/settings")
+def get_genieacs_settings_route(user: dict = Depends(get_current_user)):
+    """Retrieve GenieACS configuration for current user."""
+    settings = db.get_genieacs_settings(user["id"])
+    if settings and settings.get("password"):
+        settings["has_password"] = True
+        settings["password"] = "••••••••"
+    else:
+        if settings:
+            settings["has_password"] = False
+    return settings
+
+
+@router.put("/genieacs/settings")
+def update_genieacs_settings_route(
+    payload: GenieAcsSettingsUpdate,
+    request: Request = None,
+    user: dict = Depends(get_current_user),
+):
+    """Save GenieACS settings."""
+    from . import genieacs_service
+    clean_url = genieacs_service.normalize_url(payload.url)
+
+    pwd = payload.password if payload.password and payload.password != "••••••••" else ""
+    updated = db.update_genieacs_settings(
+        user_id=user["id"],
+        enabled=payload.enabled,
+        url=clean_url,
+        auth_enabled=payload.auth_enabled,
+        username=payload.username or "",
+        password=pwd,
+        timeout_sec=payload.timeout_sec or 10,
+    )
+    ip = request.client.host if request and request.client else None
+    db.log_audit(
+        user_id=user["id"],
+        action="GENIEACS_CONFIG_UPDATE",
+        endpoint="/api/genieacs/settings",
+        target=clean_url,
+        details={"enabled": payload.enabled, "url": clean_url, "auth_enabled": payload.auth_enabled},
+        ip_address=ip,
+    )
+    if updated.get("password"):
+        updated["has_password"] = True
+        updated["password"] = "••••••••"
+    return updated
+
+
+@router.post("/genieacs/test")
+def test_genieacs_connection_route(
+    payload: Optional[GenieAcsTestRequest] = None,
+    user: dict = Depends(get_current_user),
+):
+    """Test connectivity to GenieACS NBI."""
+    from . import genieacs_service
+
+    settings = db.get_genieacs_settings(user["id"])
+    url = (payload.url if payload and payload.url is not None else settings.get("url")) or ""
+    auth_enabled = payload.auth_enabled if payload and payload.auth_enabled is not None else bool(settings.get("auth_enabled"))
+    username = (payload.username if payload and payload.username is not None else settings.get("username")) or ""
+
+    password = ""
+    if payload and payload.password and payload.password != "••••••••":
+        password = payload.password
+    else:
+        password = settings.get("password") or ""
+
+    timeout = (payload.timeout_sec if payload and payload.timeout_sec else settings.get("timeout_sec")) or 6
+
+    res = genieacs_service.test_connection(
+        url=url,
+        auth_enabled=auth_enabled,
+        username=username,
+        password=password,
+        timeout=timeout,
+    )
+    if res.get("success"):
+        db.update_genieacs_status(user["id"], status="online", count=res.get("device_count", 0), error=None)
+    else:
+        db.update_genieacs_status(user["id"], status="error", count=0, error=res.get("message"))
+    return res
+
+
+@router.get("/genieacs/devices")
+def list_genieacs_devices_route(user: dict = Depends(get_current_user)):
+    """Fetch parsed device inventory from GenieACS."""
+    from . import genieacs_service
+
+    settings = db.get_genieacs_settings(user["id"])
+    if not settings or not settings.get("enabled"):
+        return {"devices": [], "total": 0, "status": "disabled", "message": "GenieACS belum diaktifkan"}
+
+    url = settings.get("url") or ""
+    auth_enabled = bool(settings.get("auth_enabled"))
+    username = settings.get("username") or ""
+    password = settings.get("password") or ""
+    timeout = int(settings.get("timeout_sec") or 15)
+
+    raw_devices = genieacs_service.fetch_devices(url, auth_enabled, username, password, timeout)
+    parsed = [genieacs_service.parse_device(d) for d in raw_devices]
+    db.update_genieacs_status(user["id"], status="online", count=len(parsed), error=None)
+    return {"devices": parsed, "total": len(parsed), "status": "online"}
+
+
+@router.post("/genieacs/sync-to-customers")
+def sync_genieacs_to_customers_route(user: dict = Depends(get_current_user)):
+    """
+    Directly sync PPPoE usernames from GenieACS to customers matching by ONU Serial Number.
+    """
+    from . import genieacs_service
+
+    settings = db.get_genieacs_settings(user["id"])
+    if not settings or not settings.get("enabled"):
+        raise HTTPException(status_code=400, detail="GenieACS belum diaktifkan dalam pengaturan")
+
+    acs_map = genieacs_service.get_user_acs_mapping(user["id"])
+    if not acs_map:
+        return {"success": False, "message": "Tidak ada data perangkat yang ditemukan di GenieACS atau koneksi gagal", "updated_count": 0}
+
+    customers = db.list_customers(user["id"])
+    updated_count = 0
+    matched_items = []
+
+    for c in customers:
+        raw_sn = c.get("onu_sn")
+        if not raw_sn:
+            continue
+        clean_sn = genieacs_service._clean_sn(raw_sn)
+        acs_item = (
+            acs_map.get(clean_sn)
+            or (acs_map.get(clean_sn[-12:]) if len(clean_sn) >= 12 else None)
+            or (acs_map.get(clean_sn[-8:]) if len(clean_sn) >= 8 else None)
+            or (acs_map.get(clean_sn[-6:]) if len(clean_sn) >= 6 else None)
+        )
+        if acs_item and acs_item.get("pppoe_username"):
+            acs_uname = acs_item["pppoe_username"]
+            if c.get("pppoe_username") != acs_uname:
+                db.update_customer(
+                    user_id=user["id"],
+                    customer_id=c["id"],
+                    pppoe_username=acs_uname,
+                    onu_model=acs_item.get("model") or c.get("onu_model"),
+                )
+                updated_count += 1
+                matched_items.append({
+                    "customer_id": c["id"],
+                    "customer_name": c.get("name"),
+                    "onu_sn": raw_sn,
+                    "pppoe_username": acs_uname,
+                })
+
+    return {
+        "success": True,
+        "message": f"Berhasil sinkronisasi {updated_count} pelanggan dari data GenieACS TR-069",
+        "updated_count": updated_count,
+        "total_customers": len(customers),
+        "total_acs_devices": settings.get("device_count", len(acs_map)),
+        "updated_items": matched_items[:20],
+    }
+
 
 
 

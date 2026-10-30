@@ -143,6 +143,22 @@ def init_db():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
+                CREATE TABLE IF NOT EXISTS genieacs_settings (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                    url TEXT NOT NULL DEFAULT 'http://192.168.1.10:7557',
+                    auth_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+                    username TEXT DEFAULT '',
+                    password TEXT DEFAULT '',
+                    timeout_sec INTEGER NOT NULL DEFAULT 10,
+                    last_synced_at TIMESTAMP DEFAULT NULL,
+                    last_status TEXT DEFAULT 'unknown',
+                    last_error TEXT DEFAULT NULL,
+                    device_count INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
             """)
             conn.commit()
 
@@ -1175,4 +1191,74 @@ def get_backup_stats(user_id: int) -> dict:
             }
     finally:
         _put(conn)
+
+
+def get_genieacs_settings(user_id: int) -> dict:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT * FROM genieacs_settings WHERE user_id = %s", (user_id,))
+            row = cur.fetchone()
+            if row:
+                return dict(row)
+            # Create default settings if none exist
+            cur.execute("""
+                INSERT INTO genieacs_settings (user_id, enabled, url, auth_enabled, username, password, timeout_sec)
+                VALUES (%s, TRUE, 'http://192.168.1.10:7557', FALSE, '', '', 10)
+                RETURNING *
+            """, (user_id,))
+            conn.commit()
+            return dict(cur.fetchone())
+    finally:
+        _put(conn)
+
+
+def update_genieacs_settings(
+    user_id: int,
+    enabled: bool,
+    url: str,
+    auth_enabled: bool,
+    username: str,
+    password: str,
+    timeout_sec: int,
+) -> dict:
+    conn = _conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                INSERT INTO genieacs_settings (user_id, enabled, url, auth_enabled, username, password, timeout_sec, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    enabled = EXCLUDED.enabled,
+                    url = EXCLUDED.url,
+                    auth_enabled = EXCLUDED.auth_enabled,
+                    username = EXCLUDED.username,
+                    password = CASE WHEN EXCLUDED.password != '' THEN EXCLUDED.password ELSE genieacs_settings.password END,
+                    timeout_sec = EXCLUDED.timeout_sec,
+                    updated_at = CURRENT_TIMESTAMP
+                RETURNING *
+            """, (user_id, enabled, url, auth_enabled, username, password, timeout_sec))
+            row = cur.fetchone()
+            conn.commit()
+            return dict(row)
+    finally:
+        _put(conn)
+
+
+def update_genieacs_status(user_id: int, status: str, count: int = 0, error: str | None = None) -> None:
+    conn = _conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE genieacs_settings
+                SET last_status = %s,
+                    device_count = %s,
+                    last_error = %s,
+                    last_synced_at = CURRENT_TIMESTAMP
+                WHERE user_id = %s
+            """, (status, count, error, user_id))
+            conn.commit()
+    finally:
+        _put(conn)
+
 

@@ -53,6 +53,11 @@ import {
   testOltConnection,
   updateCustomer,
   updateOlt,
+  getGenieAcsSettings,
+  updateGenieAcsSettings,
+  testGenieAcsConnection,
+  getGenieAcsDevices,
+  syncGenieAcsToCustomers,
 } from '../api'
 import { useLanguage } from '../context/LanguageContext'
 import { useRouter } from '../context/RouterContext'
@@ -113,6 +118,495 @@ function getOpticalTier(rxPower) {
     barColor: 'bg-emerald-500',
     percentage: Math.max(70, Math.min(98, pct)),
   }
+}
+
+// ── Modals: GenieACS TR-069 Integration (Auto-Map SN <-> PPPoE) ──
+function GenieAcsModal({ isOpen, onClose, onSyncComplete }) {
+  const [loading, setLoading] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [testResult, setTestResult] = useState(null)
+  const [syncResult, setSyncResult] = useState(null)
+  const [devices, setDevices] = useState([])
+  const [loadingDevices, setLoadingDevices] = useState(false)
+  const [activeTab, setActiveTab] = useState('config') // 'config' | 'devices'
+  const [deviceSearch, setDeviceSearch] = useState('')
+
+  const [form, setForm] = useState({
+    enabled: true,
+    url: 'http://192.168.1.10:7557',
+    auth_enabled: false,
+    username: '',
+    password: '',
+    timeout_sec: 10,
+  })
+
+  useEffect(() => {
+    if (isOpen) {
+      setTestResult(null)
+      setSyncResult(null)
+      setLoading(true)
+      getGenieAcsSettings()
+        .then((data) => {
+          if (data) {
+            setForm({
+              enabled: data.enabled !== undefined ? data.enabled : true,
+              url: data.url || 'http://192.168.1.10:7557',
+              auth_enabled: Boolean(data.auth_enabled),
+              username: data.username || '',
+              password: data.has_password ? '••••••••' : (data.password || ''),
+              timeout_sec: data.timeout_sec || 10,
+            })
+            if (data.last_status === 'online') {
+              setTestResult({
+                success: true,
+                message: `Status tersimpan: Online (${data.device_count || 0} perangkat terdeteksi di GenieACS)`,
+              })
+            }
+          }
+        })
+        .catch((err) => console.error('Failed to load GenieACS settings:', err))
+        .finally(() => setLoading(false))
+    }
+  }, [isOpen])
+
+  const handleTest = async () => {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const res = await testGenieAcsConnection({
+        url: form.url,
+        auth_enabled: form.auth_enabled,
+        username: form.username,
+        password: form.password,
+        timeout_sec: Number(form.timeout_sec) || 6,
+      })
+      setTestResult(res)
+    } catch (err) {
+      setTestResult({
+        success: false,
+        message: err.response?.data?.detail || err.message || 'Koneksi gagal',
+      })
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  const handleSave = async (e) => {
+    if (e) e.preventDefault()
+    setLoading(true)
+    try {
+      await updateGenieAcsSettings({
+        enabled: form.enabled,
+        url: form.url,
+        auth_enabled: form.auth_enabled,
+        username: form.username,
+        password: form.password,
+        timeout_sec: Number(form.timeout_sec) || 10,
+      })
+      alert('Pengaturan GenieACS berhasil disimpan!')
+    } catch (err) {
+      alert(err.response?.data?.detail || err.message || 'Gagal menyimpan pengaturan')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSyncNow = async () => {
+    setSyncing(true)
+    setSyncResult(null)
+    try {
+      await updateGenieAcsSettings({
+        enabled: form.enabled,
+        url: form.url,
+        auth_enabled: form.auth_enabled,
+        username: form.username,
+        password: form.password,
+        timeout_sec: Number(form.timeout_sec) || 10,
+      })
+      const res = await syncGenieAcsToCustomers()
+      setSyncResult(res)
+      if (onSyncComplete) onSyncComplete()
+    } catch (err) {
+      setSyncResult({
+        success: false,
+        message: err.response?.data?.detail || err.message || 'Gagal sinkronisasi data GenieACS',
+      })
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const handleLoadDevices = async () => {
+    setLoadingDevices(true)
+    try {
+      const res = await getGenieAcsDevices()
+      setDevices(res.devices || [])
+    } catch (err) {
+      alert('Gagal mengambil daftar perangkat: ' + (err.response?.data?.detail || err.message))
+    } finally {
+      setLoadingDevices(false)
+    }
+  }
+
+  const filteredDevices = useMemo(() => {
+    if (!deviceSearch.trim()) return devices
+    const q = deviceSearch.toLowerCase()
+    return devices.filter(
+      (d) =>
+        d.clean_sn?.toLowerCase().includes(q) ||
+        d.pppoe_username?.toLowerCase().includes(q) ||
+        d.model?.toLowerCase().includes(q) ||
+        d.ip?.toLowerCase().includes(q)
+    )
+  }, [devices, deviceSearch])
+
+  if (!isOpen) return null
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/40">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-500/20">
+              <Radio size={20} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-base text-slate-800 dark:text-white">
+                  Integrasi Server GenieACS (TR-069)
+                </h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900">
+                  Auto-Map SN ↔ PPPoE
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Otomatis cocokkan Serial Number ONU OLT dengan akun PPPoE MikroTik via REST API GenieACS NBI.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-slate-200 dark:border-slate-800 px-6 gap-4 bg-white dark:bg-slate-900 text-xs font-semibold">
+          <button
+            onClick={() => setActiveTab('config')}
+            className={`py-3 border-b-2 transition ${
+              activeTab === 'config'
+                ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400'
+                : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
+          >
+            Pengaturan & Koneksi API
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab('devices')
+              if (devices.length === 0) handleLoadDevices()
+            }}
+            className={`py-3 border-b-2 transition flex items-center gap-1.5 ${
+              activeTab === 'devices'
+                ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400'
+                : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
+          >
+            Preview CPE / Modem ({devices.length})
+          </button>
+        </div>
+
+        {/* Modal Body */}
+        <div className="p-6 overflow-y-auto space-y-5 flex-1">
+          {activeTab === 'config' ? (
+            <div className="space-y-4">
+              {/* Info banner */}
+              <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 text-xs text-emerald-900 dark:text-emerald-200 space-y-1">
+                <div className="font-semibold flex items-center gap-1.5">
+                  <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  Solusi 100% Otomatis: Tidak Perlu Rename Deskripsi di OLT!
+                </div>
+                <div className="text-[11px] text-emerald-700 dark:text-emerald-300/80 leading-relaxed">
+                  GenieACS secara otomatis mengetahui <b>Serial Number (SN) modem</b> sekaligus <b>Username PPPoE WAN</b> dari parameter TR-069. Saat Auto Sync berjalan, dashboard langsung menautkan data OLT dan MikroTik tanpa Anda harus mengedit OLT secara manual.
+                </div>
+              </div>
+
+              {/* Form */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2 flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                  <div>
+                    <div className="font-semibold text-xs text-slate-800 dark:text-white">
+                      Status Integrasi GenieACS
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Gunakan data GenieACS untuk auto-scan dan auto-sync
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.enabled}
+                      onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    GenieACS NBI REST API URL <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={form.url}
+                    onChange={(e) => setForm({ ...form, url: e.target.value })}
+                    placeholder="http://192.168.1.10:7557"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-white focus:outline-none focus:border-emerald-500 font-mono"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    Gunakan port API NBI GenieACS (default: <b>7557</b>, bukan port UI 3000). Contoh: <code>http://192.168.1.10:7557</code>
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Timeout Koneksi (detik)
+                  </label>
+                  <input
+                    type="number"
+                    value={form.timeout_sec}
+                    onChange={(e) => setForm({ ...form, timeout_sec: e.target.value })}
+                    min="3"
+                    max="60"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 pt-5">
+                  <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.auth_enabled}
+                      onChange={(e) => setForm({ ...form, auth_enabled: e.target.checked })}
+                      className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                    />
+                    Gunakan HTTP Basic Auth (Jika Diaktifkan)
+                  </label>
+                </div>
+
+                {form.auth_enabled && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                        GenieACS Username
+                      </label>
+                      <input
+                        type="text"
+                        value={form.username}
+                        onChange={(e) => setForm({ ...form, username: e.target.value })}
+                        placeholder="admin"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                        GenieACS Password
+                      </label>
+                      <input
+                        type="password"
+                        value={form.password}
+                        onChange={(e) => setForm({ ...form, password: e.target.value })}
+                        placeholder="••••••••"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-white focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Test Connection Alert Result */}
+              {testResult && (
+                <div
+                  className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 ${
+                    testResult.success
+                      ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900'
+                      : 'bg-rose-50 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300 border-rose-200 dark:border-rose-900'
+                  }`}
+                >
+                  {testResult.success ? (
+                    <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle size={16} className="text-rose-600 shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1">
+                    <div className="font-semibold">{testResult.message}</div>
+                    {testResult.latency_ms > 0 && (
+                      <div className="text-[10px] opacity-80 mt-0.5 font-mono">
+                        Latency: {testResult.latency_ms} ms • Terdeteksi: {testResult.device_count || 0} perangkat
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Sync Result Alert */}
+              {syncResult && (
+                <div
+                  className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 ${
+                    syncResult.success
+                      ? 'bg-blue-50 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300 border-blue-200 dark:border-blue-900'
+                      : 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200 dark:border-amber-900'
+                  }`}
+                >
+                  <Zap size={16} className="text-blue-600 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-semibold">{syncResult.message}</div>
+                    {syncResult.updated_count !== undefined && (
+                      <div className="text-[11px] opacity-90 mt-0.5">
+                        Diperbarui: <b>{syncResult.updated_count}</b> pelanggan dari total{' '}
+                        <b>{syncResult.total_customers}</b> pelanggan di database.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Devices Preview Tab */
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="relative flex-1">
+                  <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={deviceSearch}
+                    onChange={(e) => setDeviceSearch(e.target.value)}
+                    placeholder="Cari SN, Username PPPoE, Model, atau IP..."
+                    className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-white"
+                  />
+                </div>
+                <button
+                  onClick={handleLoadDevices}
+                  disabled={loadingDevices}
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition"
+                >
+                  <RefreshCw size={12} className={loadingDevices ? 'animate-spin' : ''} />
+                  Muat Ulang
+                </button>
+              </div>
+
+              <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden max-h-80 overflow-y-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 font-semibold border-b border-slate-200 dark:border-slate-700 sticky top-0">
+                    <tr>
+                      <th className="p-2.5">Serial Number (SN)</th>
+                      <th className="p-2.5">Username PPPoE (TR-069)</th>
+                      <th className="p-2.5">Model / Vendor</th>
+                      <th className="p-2.5">IP Modem</th>
+                      <th className="p-2.5">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[11px]">
+                    {loadingDevices ? (
+                      <tr>
+                        <td colSpan={5} className="p-6 text-center text-slate-400 font-sans">
+                          <Loader2 size={18} className="animate-spin inline-block mr-2" />
+                          Mengambil data modem dari GenieACS API...
+                        </td>
+                      </tr>
+                    ) : filteredDevices.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="p-6 text-center text-slate-400 font-sans">
+                          {devices.length === 0
+                            ? 'Belum ada data perangkat yang dimuat. Klik tombol Muat Ulang.'
+                            : 'Tidak ada perangkat yang cocok dengan pencarian.'}
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredDevices.map((d, i) => (
+                        <tr key={d.id || i} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                          <td className="p-2.5 font-bold text-slate-900 dark:text-white">
+                            {d.clean_sn || d.raw_sn}
+                          </td>
+                          <td className="p-2.5 font-sans">
+                            {d.pppoe_username ? (
+                              <span className="font-mono font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                {d.pppoe_username}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 italic">Tidak ada PPPoE</span>
+                            )}
+                          </td>
+                          <td className="p-2.5 font-sans text-slate-500">
+                            {d.manufacturer ? `${d.manufacturer} ` : ''}{d.model}
+                          </td>
+                          <td className="p-2.5 text-slate-500">{d.ip || '-'}</td>
+                          <td className="p-2.5 font-sans">
+                            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                              Terhubung
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-800/40">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleTest}
+              disabled={testing || !form.url}
+              className="px-3.5 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-sm transition disabled:opacity-50"
+            >
+              {testing ? <Loader2 size={13} className="animate-spin text-emerald-500" /> : <RefreshCw size={13} className="text-emerald-500" />}
+              Tes Koneksi
+            </button>
+
+            <button
+              onClick={handleSyncNow}
+              disabled={syncing || !form.url}
+              className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-sm transition disabled:opacity-50"
+              title="Tarik data modem GenieACS dan cocokkan langsung ke daftar pelanggan"
+            >
+              {syncing ? <Loader2 size={13} className="animate-spin text-blue-600" /> : <Zap size={13} className="text-blue-600" />}
+              Tarik & Sync Pelanggan
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold transition"
+            >
+              Tutup
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={loading}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition disabled:opacity-50"
+            >
+              {loading && <Loader2 size={13} className="animate-spin" />}
+              Simpan Pengaturan
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
 }
 
 // ── Modals: 1. Manage OLTs (Add / Edit / SNMP Test / Scan) ──
@@ -1543,6 +2037,8 @@ export default function CustomerMonitor() {
 
   // Modals state
   const [oltModalOpen, setOltModalOpen] = useState(false)
+  const [genieAcsModalOpen, setGenieAcsModalOpen] = useState(false)
+  const [genieAcsInfo, setGenieAcsInfo] = useState({ online: false, count: 0, enabled: false })
   const [syncTargetCustomer, setSyncTargetCustomer] = useState(null)
   const [syncPreviewOpen, setSyncPreviewOpen] = useState(false)
   const [syncPreviewData, setSyncPreviewData] = useState(null)
@@ -1596,6 +2092,20 @@ export default function CustomerMonitor() {
   useEffect(() => {
     loadData()
   }, [search, selectedOlt, selectedTier, activeRouter])
+
+  useEffect(() => {
+    getGenieAcsSettings()
+      .then((data) => {
+        if (data) {
+          setGenieAcsInfo({
+            online: data.last_status === 'online',
+            count: data.device_count || 0,
+            enabled: Boolean(data.enabled),
+          })
+        }
+      })
+      .catch(() => {})
+  }, [genieAcsModalOpen])
 
   // Step 2: Test OLT Connection via SNMP
   const handleTestOlt = async () => {
@@ -1753,6 +2263,20 @@ export default function CustomerMonitor() {
           >
             <Settings size={14} className="text-violet-500" />
             Kelola OLT ({olts.length})
+          </button>
+
+          <button
+            onClick={() => setGenieAcsModalOpen(true)}
+            className="px-3.5 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-700/60"
+            title="Integrasi GenieACS TR-069 (Auto-map SN ke PPPoE Username)"
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                genieAcsInfo.online ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-600'
+              }`}
+            />
+            <Radio size={14} className="text-emerald-500" />
+            GenieACS {genieAcsInfo.count > 0 ? `(${genieAcsInfo.count})` : ''}
           </button>
 
           <button
@@ -2301,6 +2825,13 @@ export default function CustomerMonitor() {
         onClose={() => setOltModalOpen(false)}
         olts={olts}
         onReload={loadData}
+      />
+
+      {/* ── Modals: GenieACS TR-069 Integration ── */}
+      <GenieAcsModal
+        isOpen={genieAcsModalOpen}
+        onClose={() => setGenieAcsModalOpen(false)}
+        onSyncComplete={loadData}
       />
 
       {/* ── Modals: Step 4 & 5. Sync PPPoE ke MikroTik ── */}
