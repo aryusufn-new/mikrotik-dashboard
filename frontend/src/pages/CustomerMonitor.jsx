@@ -19,6 +19,7 @@ import {
   Plus,
   Radio,
   RefreshCw,
+  Router,
   Search,
   Server,
   Settings,
@@ -633,13 +634,14 @@ function GenieAcsModal({ isOpen, onClose, onSyncComplete }) {
 }
 
 // ── Modals: 1. Manage OLTs (Add / Edit / SNMP Test / Scan) ──
-function OltManagementModal({ isOpen, onClose, olts, onReload }) {
+function OltManagementModal({ isOpen, onClose, olts, onReload, routers = [], activeRouterId = null }) {
   const [activeTab, setActiveTab] = useState('list') // 'list' | 'add'
   const [testingId, setTestingId] = useState(null)
   const [testResult, setTestResult] = useState(null)
   const [editingOltId, setEditingOltId] = useState(null)
   const [form, setForm] = useState({
     name: '',
+    router_id: activeRouterId ? Number(activeRouterId) : (routers?.[0]?.id || null),
     brand: 'cdata',
     host: '192.168.10.1',
     snmp_port: 161,
@@ -675,6 +677,7 @@ function OltManagementModal({ isOpen, onClose, olts, onReload }) {
     setEditingOltId(olt.id)
     setForm({
       name: olt.name || '',
+      router_id: olt.router_id || activeRouterId || (routers?.[0]?.id || null),
       brand: olt.brand || 'cdata',
       host: olt.host || '192.168.10.1',
       snmp_port: olt.snmp_port || 161,
@@ -731,26 +734,24 @@ function OltManagementModal({ isOpen, onClose, olts, onReload }) {
     e.preventDefault()
     setSubmitting(true)
     try {
+      const payload = {
+        ...form,
+        router_id: form.router_id ? Number(form.router_id) : (activeRouterId ? Number(activeRouterId) : null),
+        snmp_port: Number(form.snmp_port) || 161,
+        pon_ports_count: Number(form.pon_ports_count) || 4,
+        telnet_port: Number(form.telnet_port) || 23,
+      }
       if (editingOltId) {
-        await updateOlt(editingOltId, {
-          ...form,
-          snmp_port: Number(form.snmp_port) || 161,
-          pon_ports_count: Number(form.pon_ports_count) || 4,
-          telnet_port: Number(form.telnet_port) || 23,
-        })
+        await updateOlt(editingOltId, payload)
         alert('OLT berhasil diperbarui!')
       } else {
-        await addOlt({
-          ...form,
-          snmp_port: Number(form.snmp_port) || 161,
-          pon_ports_count: Number(form.pon_ports_count) || 4,
-          telnet_port: Number(form.telnet_port) || 23,
-        })
+        await addOlt(payload)
         alert('OLT berhasil ditambahkan via SNMP!')
       }
       setEditingOltId(null)
       setForm({
         name: '',
+        router_id: activeRouterId ? Number(activeRouterId) : (routers?.[0]?.id || null),
         brand: 'cdata',
         host: '192.168.10.1',
         snmp_port: 161,
@@ -819,6 +820,7 @@ function OltManagementModal({ isOpen, onClose, olts, onReload }) {
               setEditingOltId(null)
               setForm({
                 name: '',
+                router_id: activeRouterId ? Number(activeRouterId) : (routers?.[0]?.id || null),
                 brand: 'cdata',
                 host: '192.168.10.1',
                 snmp_port: 161,
@@ -865,6 +867,10 @@ function OltManagementModal({ isOpen, onClose, olts, onReload }) {
                         </span>
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300">
                           {olt.brand}
+                        </span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 flex items-center gap-1">
+                          <Router size={10} />
+                          {olt.router_name || (routers.find((r) => r.id === olt.router_id)?.name) || 'Router Utama'}
                         </span>
                       </div>
                       <p className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-0.5">
@@ -1032,6 +1038,33 @@ function OltManagementModal({ isOpen, onClose, olts, onReload }) {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
+            {/* Router Selector */}
+            <div className="p-3 bg-indigo-50/60 dark:bg-indigo-950/30 rounded-xl border border-indigo-200/80 dark:border-indigo-900/60">
+              <label className="block font-bold text-indigo-900 dark:text-indigo-200 mb-1 flex items-center gap-1.5">
+                <Router size={14} className="text-indigo-600 dark:text-indigo-400" />
+                Router MikroTik Induk *
+              </label>
+              <select
+                value={form.router_id || ''}
+                onChange={(e) => setForm({ ...form, router_id: e.target.value ? Number(e.target.value) : null })}
+                className="w-full px-3 py-2 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-800 text-slate-800 dark:text-white font-semibold"
+                required
+              >
+                {routers && routers.length > 0 ? (
+                  routers.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name} ({r.host})
+                    </option>
+                  ))
+                ) : (
+                  <option value="">Router Default</option>
+                )}
+              </select>
+              <p className="text-[11px] text-indigo-700/80 dark:text-indigo-300/70 mt-1">
+                OLT ini akan terikat secara eksklusif ke Router MikroTik ini (OLT & PPPoE tidak tercampur antar router).
+              </p>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -2035,7 +2068,7 @@ function SyncPreviewModal({ isOpen, onClose, previewData, onApplySuccess, onRefr
 // ── Main Customer & FTTH Management Page ───────────────────
 export default function CustomerMonitor() {
   const { t } = useLanguage()
-  const { activeRouter, activeRouterId } = useRouter()
+  const { activeRouter, activeRouterId, routers } = useRouter()
 
   const [customers, setCustomers] = useState([])
   const [olts, setOlts] = useState([])
@@ -2082,17 +2115,23 @@ export default function CustomerMonitor() {
           search,
           status: selectedTier || undefined,
           olt_id: selectedOlt ? Number(selectedOlt) : undefined,
+          router_id: activeRouterId || undefined,
         }),
-        getOlts(),
-        getCustomerStats(),
+        getOlts(activeRouterId),
+        getCustomerStats(activeRouterId, selectedOlt ? Number(selectedOlt) : undefined),
       ])
       setCustomers(custRes || [])
       setOlts(oltRes || [])
       setStats(statRes || { total: 0, active: 0, normal: 0, warning: 0, critical: 0, los: 0 })
 
-      // Auto-select primary OLT if none selected
-      if (!selectedOlt && oltRes && oltRes.length > 0) {
-        setSelectedOlt(String(oltRes[0].id))
+      // Auto-select primary OLT if none selected or if previously selected OLT doesn't belong to this router
+      if (oltRes && oltRes.length > 0) {
+        const oltMatch = oltRes.find((o) => String(o.id) === String(selectedOlt))
+        if (!selectedOlt || !oltMatch) {
+          setSelectedOlt(String(oltRes[0].id))
+        }
+      } else {
+        setSelectedOlt('')
       }
     } catch (e) {
       console.error('Failed to load FTTH customer data:', e)
@@ -2110,11 +2149,11 @@ export default function CustomerMonitor() {
     getPppActive()
       .then((res) => setActiveSessions(res || []))
       .catch(() => setActiveSessions([]))
-  }, [activeRouter])
+  }, [activeRouterId])
 
   useEffect(() => {
     loadData()
-  }, [search, selectedOlt, selectedTier, activeRouter])
+  }, [search, selectedOlt, selectedTier, activeRouterId])
 
   useEffect(() => {
     getGenieAcsSettings()
@@ -2418,6 +2457,11 @@ export default function CustomerMonitor() {
                 <span className="text-xs font-bold uppercase tracking-wider text-violet-400">
                   Langkah 1 & 2: OLT Terpilih
                 </span>
+                {activeRouter && (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">
+                    <Router size={10} /> {activeRouter.name}
+                  </span>
+                )}
                 {currentOlt && (
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-violet-500/20 text-violet-300 border border-violet-500/30">
                     {currentOlt.brand}
@@ -2848,6 +2892,8 @@ export default function CustomerMonitor() {
         onClose={() => setOltModalOpen(false)}
         olts={olts}
         onReload={loadData}
+        routers={routers}
+        activeRouterId={activeRouterId}
       />
 
       {/* ── Modals: GenieACS TR-069 Integration ── */}

@@ -426,6 +426,7 @@ def noc_dhcp_conntrack(user: dict = Depends(get_current_user), router_id: int | 
 
 class OltCreate(BaseModel):
     name: str
+    router_id: Optional[int] = None
     brand: str = "vsol"
     host: str = "192.168.1.100"
     snmp_port: int = 161
@@ -439,6 +440,7 @@ class OltCreate(BaseModel):
 
 class OltUpdate(BaseModel):
     name: Optional[str] = None
+    router_id: Optional[int] = None
     brand: Optional[str] = None
     host: Optional[str] = None
     snmp_port: Optional[int] = None
@@ -483,14 +485,26 @@ class CustomerUpdate(BaseModel):
 
 
 @router.get("/olts")
-def get_olts(user: dict = Depends(get_current_user)):
-    return db.list_olts(user["id"])
+def get_olts(
+    all_routers: bool = False,
+    router_id: Optional[int] = Query(None),
+    header_router_id: Optional[int] = Depends(_get_router_id),
+    user: dict = Depends(get_current_user),
+):
+    target_rid = None if all_routers else (router_id if router_id is not None else header_router_id)
+    return db.list_olts(user["id"], router_id=target_rid)
 
 
 @router.post("/olts")
-def create_olt(body: OltCreate, user: dict = Depends(get_current_user)):
+def create_olt(
+    body: OltCreate,
+    header_router_id: Optional[int] = Depends(_get_router_id),
+    user: dict = Depends(get_current_user),
+):
+    target_rid = body.router_id if body.router_id is not None else header_router_id
     olt_id = db.add_olt(
         user_id=user["id"],
+        router_id=target_rid,
         name=body.name,
         brand=body.brand,
         host=body.host,
@@ -565,8 +579,14 @@ def scan_onus(olt_id: int, user: dict = Depends(get_current_user)):
 # ── Customer FTTH Endpoints ────────────────────────────────
 
 @router.get("/customers/stats")
-def customer_stats(user: dict = Depends(get_current_user)):
-    return db.get_customer_stats(user["id"])
+def customer_stats(
+    filter_router_id: Optional[int] = None,
+    olt_id: Optional[int] = None,
+    router_id: Optional[int] = Depends(_get_router_id),
+    user: dict = Depends(get_current_user),
+):
+    target_rid = filter_router_id if filter_router_id is not None else router_id
+    return db.get_customer_stats(user["id"], router_id=target_rid, olt_id=olt_id)
 
 
 @router.get("/customers")
@@ -580,9 +600,10 @@ def get_customers(
 ):
     import re
     db.deduplicate_customers(user["id"])
+    target_rid = filter_router_id if filter_router_id is not None else router_id
     customers = db.list_customers(
         user_id=user["id"],
-        router_id=filter_router_id,
+        router_id=target_rid,
         olt_id=olt_id,
         search=search,
         status_filter=status,
@@ -845,12 +866,18 @@ def auto_scan_all_customers(
                 print("Warning: list_routers fallback error:", e)
 
         # 3. Get OLT configuration
-        olts = db.list_olts(user["id"])
+        olts = db.list_olts(user["id"], router_id=valid_router_id)
         primary_olt = None
         if olt_id:
             primary_olt = next((o for o in olts if o["id"] == olt_id), None)
+            if not primary_olt:
+                primary_olt = db.get_olt(olt_id, user["id"])
         if not primary_olt and olts:
             primary_olt = olts[0]
+
+        # If primary_olt has a router_id and target router was unset, adopt it
+        if primary_olt and primary_olt.get("router_id") and not target_router_id:
+            valid_router_id = primary_olt["router_id"]
 
         # Auto-create default VSOL OLT if none exists
         if not primary_olt:
@@ -858,6 +885,7 @@ def auto_scan_all_customers(
                 new_olt_id = db.add_olt(
                     user["id"],
                     name="OLT Sentral Utama",
+                    router_id=valid_router_id,
                     brand="vsol",
                     host="192.168.10.1",
                     snmp_port=161,

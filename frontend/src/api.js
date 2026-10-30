@@ -97,7 +97,13 @@ export const getNocMultiPing = () => http.get('/api/noc/multi-ping').then(r => r
 export const getNocDhcpConntrack = () => http.get('/api/noc/dhcp-conntrack').then(r => r.data)
 
 // OLT & FTTH Customer Monitoring
-export const getOlts = () => http.get('/api/olts').then(r => r.data)
+export const getOlts = (routerId = null, allRouters = false) => {
+  const query = new URLSearchParams()
+  if (routerId) query.set('router_id', routerId)
+  if (allRouters) query.set('all_routers', 'true')
+  const qs = query.toString()
+  return http.get(`/api/olts${qs ? `?${qs}` : ''}`).then(r => r.data)
+}
 export const addOlt = (data) => http.post('/api/olts', data).then(r => r.data)
 export const getOlt = (id) => http.get(`/api/olts/${id}`).then(r => r.data)
 export const updateOlt = (id, data) => http.put(`/api/olts/${id}`, data).then(r => r.data)
@@ -110,10 +116,17 @@ export const getCustomers = (params = {}) => {
   if (params.search) query.set('search', params.search)
   if (params.status) query.set('status', params.status)
   if (params.olt_id) query.set('olt_id', params.olt_id)
+  if (params.router_id) query.set('filter_router_id', params.router_id)
   const qs = query.toString()
   return http.get(`/api/customers${qs ? `?${qs}` : ''}`).then(r => r.data)
 }
-export const getCustomerStats = () => http.get('/api/customers/stats').then(r => r.data)
+export const getCustomerStats = (routerId = null, oltId = null) => {
+  const query = new URLSearchParams()
+  if (routerId) query.set('filter_router_id', routerId)
+  if (oltId) query.set('olt_id', oltId)
+  const qs = query.toString()
+  return http.get(`/api/customers/stats${qs ? `?${qs}` : ''}`).then(r => r.data)
+}
 export const getCustomer = (id) => http.get(`/api/customers/${id}`).then(r => r.data)
 export const addCustomer = (data) => http.post('/api/customers', data).then(r => r.data)
 export const updateCustomer = (id, data) => http.put(`/api/customers/${id}`, data).then(r => r.data)

@@ -80,6 +80,7 @@ def init_db():
                 CREATE TABLE IF NOT EXISTS olts (
                     id SERIAL PRIMARY KEY,
                     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    router_id INTEGER REFERENCES router_configs(id) ON DELETE SET NULL,
                     name TEXT NOT NULL,
                     brand TEXT NOT NULL DEFAULT 'vsol',
                     host TEXT NOT NULL,
@@ -184,6 +185,26 @@ def init_db():
             )
             if cur.fetchone() is None:
                 cur.execute("ALTER TABLE router_configs ADD COLUMN name TEXT NOT NULL DEFAULT 'Router 1'")
+                conn.commit()
+
+            cur.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'olts' AND column_name = 'router_id'"
+            )
+            if cur.fetchone() is None:
+                cur.execute("ALTER TABLE olts ADD COLUMN router_id INTEGER REFERENCES router_configs(id) ON DELETE SET NULL")
+                cur.execute("""
+                    UPDATE olts SET router_id = (
+                        SELECT id FROM router_configs 
+                        WHERE router_configs.user_id = olts.user_id 
+                        ORDER BY id ASC LIMIT 1
+                    ) WHERE router_id IS NULL
+                """)
+                cur.execute("""
+                    UPDATE customers SET router_id = (
+                        SELECT router_id FROM olts WHERE olts.id = customers.olt_id
+                    ) WHERE router_id IS NULL AND olt_id IS NOT NULL
+                """)
                 conn.commit()
             cur.execute("SELECT id FROM users WHERE username = %s", ("admin",))
             row = cur.fetchone()
@@ -505,18 +526,26 @@ def safe_router_config(user_id: int) -> dict:
 
 # ── OLT Management ─────────────────────────────────────────
 
-def list_olts(user_id: int) -> list[dict]:
+def list_olts(user_id: int, router_id: int | None = None) -> list[dict]:
     conn = _conn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("""
-                SELECT o.*, COUNT(c.id) AS customer_count
+            query = """
+                SELECT o.*, r.name AS router_name, COUNT(c.id) AS customer_count
                 FROM olts o
+                LEFT JOIN router_configs r ON r.id = o.router_id
                 LEFT JOIN customers c ON c.olt_id = o.id
                 WHERE o.user_id = %s
-                GROUP BY o.id
+            """
+            params: list = [user_id]
+            if router_id is not None:
+                query += " AND (o.router_id = %s OR o.router_id IS NULL)"
+                params.append(router_id)
+            query += """
+                GROUP BY o.id, r.name
                 ORDER BY o.id ASC
-            """, (user_id,))
+            """
+            cur.execute(query, params)
             return [dict(r) for r in cur.fetchall()]
     finally:
         _put(conn)
@@ -527,11 +556,12 @@ def get_olt(olt_id: int, user_id: int) -> dict | None:
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
-                SELECT o.*, COUNT(c.id) AS customer_count
+                SELECT o.*, r.name AS router_name, COUNT(c.id) AS customer_count
                 FROM olts o
+                LEFT JOIN router_configs r ON r.id = o.router_id
                 LEFT JOIN customers c ON c.olt_id = o.id
                 WHERE o.id = %s AND o.user_id = %s
-                GROUP BY o.id
+                GROUP BY o.id, r.name
             """, (olt_id, user_id))
             row = cur.fetchone()
             return dict(row) if row else None
@@ -542,6 +572,7 @@ def get_olt(olt_id: int, user_id: int) -> dict | None:
 def add_olt(
     user_id: int,
     name: str,
+    router_id: int | None = None,
     brand: str = "vsol",
     host: str = "192.168.1.100",
     snmp_port: int = 161,
@@ -557,12 +588,12 @@ def add_olt(
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO olts (
-                    user_id, name, brand, host, snmp_port, snmp_community,
+                    user_id, router_id, name, brand, host, snmp_port, snmp_community,
                     telnet_port, telnet_user, telnet_pass, pon_ports_count, description
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (
-                user_id, name, brand, host, snmp_port, snmp_community,
+                user_id, router_id, name, brand, host, snmp_port, snmp_community,
                 telnet_port, telnet_user, telnet_pass, pon_ports_count, description
             ))
             new_id = cur.fetchone()[0]
@@ -581,7 +612,7 @@ def update_olt(olt_id: int, user_id: int, **kwargs) -> bool:
                 return False
 
             allowed = {
-                "name", "brand", "host", "snmp_port", "snmp_community",
+                "name", "router_id", "brand", "host", "snmp_port", "snmp_community",
                 "telnet_port", "telnet_user", "telnet_pass", "pon_ports_count", "description"
             }
             updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
@@ -642,8 +673,8 @@ def list_customers(
             params: list = [user_id]
 
             if router_id is not None:
-                query += " AND (c.router_id = %s OR c.router_id IS NULL)"
-                params.append(router_id)
+                query += " AND (c.router_id = %s OR (c.router_id IS NULL AND o.router_id = %s))"
+                params.extend([router_id, router_id])
 
             if olt_id is not None:
                 query += " AND c.olt_id = %s"
@@ -931,21 +962,31 @@ def update_customer_optical(
         _put(conn)
 
 
-def get_customer_stats(user_id: int) -> dict:
+def get_customer_stats(user_id: int, router_id: int | None = None, olt_id: int | None = None) -> dict:
     conn = _conn()
     try:
         with conn.cursor() as cur:
-            cur.execute("""
+            query = """
                 SELECT
                     COUNT(*) AS total,
-                    COUNT(*) FILTER (WHERE status = 'active') AS active,
-                    COUNT(*) FILTER (WHERE last_optical_status = 'normal') AS normal,
-                    COUNT(*) FILTER (WHERE last_optical_status = 'warning') AS warning,
-                    COUNT(*) FILTER (WHERE last_optical_status = 'critical') AS critical,
-                    COUNT(*) FILTER (WHERE last_optical_status = 'los') AS los
-                FROM customers
-                WHERE user_id = %s
-            """, (user_id,))
+                    COUNT(*) FILTER (WHERE c.status = 'active') AS active,
+                    COUNT(*) FILTER (WHERE c.last_optical_status = 'normal') AS normal,
+                    COUNT(*) FILTER (WHERE c.last_optical_status = 'warning') AS warning,
+                    COUNT(*) FILTER (WHERE c.last_optical_status = 'critical') AS critical,
+                    COUNT(*) FILTER (WHERE c.last_optical_status = 'los') AS los
+                FROM customers c
+                LEFT JOIN olts o ON o.id = c.olt_id
+                WHERE c.user_id = %s
+            """
+            params: list = [user_id]
+            if router_id is not None:
+                query += " AND (c.router_id = %s OR (c.router_id IS NULL AND o.router_id = %s))"
+                params.extend([router_id, router_id])
+            if olt_id is not None:
+                query += " AND c.olt_id = %s"
+                params.append(olt_id)
+
+            cur.execute(query, params)
             row = cur.fetchone()
             if not row:
                 return {"total": 0, "active": 0, "normal": 0, "warning": 0, "critical": 0, "los": 0}
