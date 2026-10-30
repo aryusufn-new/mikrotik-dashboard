@@ -75,6 +75,24 @@ HSGQ_BASE = ".1.3.6.1.4.1.5105.1.3"
 HSGQ_ONU_RX = f"{HSGQ_BASE}.1.2"
 HSGQ_ONU_TX = f"{HSGQ_BASE}.1.1"
 
+# HIOSO Enterprise MIB (.1.3.6.1.4.1.25355) - HA7302, HA7304V, HA7304C, HA7304VX
+HIOSO_BASE = ".1.3.6.1.4.1.25355.3.2.6"
+HIOSO_ONU_NAME = f"{HIOSO_BASE}.3.2.1.37"       # String (Nama Pelanggan/ONU)
+HIOSO_ONU_SN = f"{HIOSO_BASE}.3.2.1.11"         # Hex string Serial Number
+HIOSO_ONU_MAC = f"{HIOSO_BASE}.3.2.1.12"        # MAC Address
+HIOSO_ONU_STATUS = f"{HIOSO_BASE}.3.2.1.39"     # 1=online, 2=offline
+HIOSO_ONU_DIST = f"{HIOSO_BASE}.3.2.1.25"       # Integer meters
+HIOSO_OPT_TX = f"{HIOSO_BASE}.14.2.1.4"         # Float string dBm (contoh: -2.08)
+HIOSO_OPT_RX = f"{HIOSO_BASE}.14.2.1.8"         # Float string dBm (contoh: -18.50)
+HIOSO_OPT_TEMP = f"{HIOSO_BASE}.14.2.1.7"       # Temperature °C
+
+# HIOSO BDCOM / Huawei Clone (.1.3.6.1.4.1.3320)
+HIOSO_BDCOM_BASE = ".1.3.6.1.4.1.3320.101.10"
+HIOSO_BDCOM_NAME = f"{HIOSO_BDCOM_BASE}.1.1.79"
+HIOSO_BDCOM_SN = f"{HIOSO_BDCOM_BASE}.1.1.3"
+HIOSO_BDCOM_STATUS = f"{HIOSO_BDCOM_BASE}.1.1.26"
+HIOSO_BDCOM_TX = f"{HIOSO_BDCOM_BASE}.5.1.5"
+
 
 # ── ASN.1 BER SNMP Packet Builder & Parser ─────────────────
 
@@ -479,6 +497,10 @@ def _format_sn(val: Any) -> str:
         except Exception:
             pass
 
+    # Check if 12 hex characters representing a 6-byte EPON MAC (e.g. e067b3123456 -> E0:67:B3:12:34:56)
+    if len(val_str) == 12 and all(c in "0123456789ABCDEFabcdef" for c in val_str):
+        return ":".join(val_str[i:i+2].upper() for i in range(0, 12, 2))
+
     # If space-separated hex bytes, e.g. "48 57 54 43 51 7A FC AF"
     parts = val_str.split()
     if len(parts) == 8 and all(len(p) <= 2 for p in parts):
@@ -562,8 +584,10 @@ def fetch_onu_optical(
 
     if brand in ("vsol", "cdata", "hioso") or any(b in str(olt.get("name") or "").lower() for b in ("cdata", "hioso")):
         dev_idx = (port_num << 8) | onu_id
-        # Candidate OIDs for RX optical power across C-Data GPON (NSCRTV & Enterprise), C-Data EPON, VSOL, HIOSO, and IEEE EPON
+        # Candidate OIDs for RX optical power across HIOSO, C-Data, VSOL, and IEEE EPON
         rx_candidates = [
+            f"{HIOSO_OPT_RX}.1.{port_num}.{onu_id}",
+            f"{HIOSO_OPT_RX}.{port_num}.{onu_id}",
             f"{IEEE_EPON_RX}.{port_num}.{onu_id}",
             f"{IEEE_EPON_RX}.{dev_idx}",
             f"{NSCRTV_GPON_OPT_RX}.{dev_idx}.1.1",
@@ -574,7 +598,6 @@ def fetch_onu_optical(
             f"{CDATA_EPON_ONU_RX}.1.{port_num}.{onu_id}",
             f"{CDATA_EPON_ONU_RX}.{port_num}.{onu_id}",
             f"{VSOL_ONU_RX}.{port_num}.{onu_id}",
-            f"{IEEE_EPON_RX}.{port_num}.{onu_id}",
         ]
         res_rx = {}
         for candidate_rx_oid in rx_candidates:
@@ -585,7 +608,7 @@ def fetch_onu_optical(
         if res_rx.get("success") and res_rx.get("value") is not None:
             query_success = True
             raw = res_rx.get("value")
-            # Parse DisplayString (e.g. "-23.45 dBm") or Integer (centi-dBm / 0.1 dBm / 0.0001 mW)
+            # Parse DisplayString (e.g. "-23.45 dBm", "-18.50") or Integer (centi-dBm / 0.1 dBm / 0.0001 mW)
             if isinstance(raw, str):
                 import re
                 m = re.search(r'(-?\d+(?:\.\d+)?)', raw)
@@ -602,19 +625,30 @@ def fetch_onu_optical(
                     snmp_rx_val = round(10 * math.log10(mw), 2)
 
         tx_candidates = [
+            f"{HIOSO_OPT_TX}.1.{port_num}.{onu_id}",
+            f"{HIOSO_OPT_TX}.{port_num}.{onu_id}",
             f"{NSCRTV_GPON_OPT_TX}.{dev_idx}.1.1",
             f"{NSCRTV_GPON_OPT_TX}.{onu_id}.1.1",
             f"{CDATA_GPON_ONU_TX}.1.1.{port_num}.{onu_id}",
             f"{VSOL_ONU_TX}.{port_num}.{onu_id}",
+            f"{HIOSO_BDCOM_TX}.{port_num}.{onu_id}",
         ]
         for tx_oid in tx_candidates:
             res_tx = snmp_get(host, port, community, tx_oid, timeout=0.8)
-            if res_tx.get("success") and isinstance(res_tx.get("value"), (int, float)):
+            if res_tx.get("success") and res_tx.get("value") is not None:
                 raw_tx = res_tx["value"]
-                snmp_tx_val = round(raw_tx / 100.0 if raw_tx > 100 else (raw_tx / 10.0 if raw_tx > 10 else raw_tx), 2)
-                break
+                if isinstance(raw_tx, str):
+                    m = re.search(r'(-?\d+(?:\.\d+)?)', raw_tx)
+                    if m:
+                        snmp_tx_val = round(float(m.group(1)), 2)
+                        break
+                elif isinstance(raw_tx, (int, float)):
+                    snmp_tx_val = round(raw_tx / 100.0 if raw_tx > 100 else (raw_tx / 10.0 if raw_tx > 10 else raw_tx), 2)
+                    break
 
         dist_candidates = [
+            f"{HIOSO_ONU_DIST}.1.{port_num}.{onu_id}",
+            f"{HIOSO_ONU_DIST}.{port_num}.{onu_id}",
             f"{NSCRTV_GPON_ONU_DIST}.{dev_idx}",
             f"{NSCRTV_GPON_ONU_DIST}.{onu_id}",
             f"{CDATA_GPON_ONU_DIST}.1.1.{port_num}.{onu_id}",
@@ -623,7 +657,7 @@ def fetch_onu_optical(
         for dist_oid in dist_candidates:
             res_dist = snmp_get(host, port, community, dist_oid, timeout=0.8)
             if res_dist.get("success") and isinstance(res_dist.get("value"), (int, float)):
-                snmp_dist_val = round(res_dist["value"] / 1000.0, 2)
+                snmp_dist_val = round(res_dist["value"] / 1000.0 if res_dist["value"] > 50 else res_dist["value"], 2)
                 break
 
     elif brand == "hsgq":
@@ -740,11 +774,15 @@ def scan_olt_onus(olt: dict[str, Any]) -> list[dict[str, Any]]:
             ]
         elif brand == "hioso":
             candidate_oids = [
-                IEEE_EPON_MAC,                     # .1.3.6.1.4.1.17409.2.3.4.1.1.2 (Standard CTC/IEEE EPON MAC on HIOSO)
+                HIOSO_ONU_SN,                      # .1.3.6.1.4.1.25355.3.2.6.3.2.1.11 (Hioso SN Hex)
+                HIOSO_ONU_MAC,                     # .1.3.6.1.4.1.25355.3.2.6.3.2.1.12 (Hioso MAC)
+                HIOSO_ONU_NAME,                    # .1.3.6.1.4.1.25355.3.2.6.3.2.1.37 (Hioso ONU Name / Description)
+                HIOSO_ONU_STATUS,                  # .1.3.6.1.4.1.25355.3.2.6.3.2.1.39
+                HIOSO_BDCOM_SN,                    # .1.3.6.1.4.1.3320.101.10.1.1.3 (Hioso BDCOM / Huawei Clone)
+                HIOSO_BDCOM_NAME,                  # .1.3.6.1.4.1.3320.101.10.1.1.79
+                IEEE_EPON_MAC,                     # .1.3.6.1.4.1.17409.2.3.4.1.1.2 (Standard CTC/IEEE EPON MAC)
                 IEEE_EPON_STATUS,                  # .1.3.6.1.4.1.17409.2.3.4.1.1.3
-                NSCRTV_GPON_ONU_SN,                # .1.3.6.1.4.1.17409.2.8.4.1.1.3 (HIOSO GPON)
-                CDATA_EPON_ONU_MAC,
-                VSOL_ONU_SN,
+                NSCRTV_GPON_ONU_SN,                # .1.3.6.1.4.1.17409.2.8.4.1.1.3 (Hioso GPON)
                 IF_DESCR,
             ]
         elif brand == "hsgq":
@@ -779,12 +817,40 @@ def scan_olt_onus(olt: dict[str, Any]) -> list[dict[str, Any]]:
             if not walk_results:
                 continue
 
-            # Auxiliary maps for GPON metadata if walking NSCRTV GPON table
+            # Auxiliary maps for GPON/HIOSO metadata if walking NSCRTV or HIOSO table
             name_map: dict[str, str] = {}
             model_map: dict[str, str] = {}
             status_map: dict[str, Any] = {}
             opt_map: dict[str, float] = {}
             is_nscrtv = root in (NSCRTV_GPON_ONU_SN, NSCRTV_GPON_AUTH_SN)
+            is_hioso = root in (HIOSO_ONU_SN, HIOSO_ONU_MAC, HIOSO_ONU_NAME)
+
+            if is_hioso:
+                try:
+                    for itm in snmp_walk(host, port, community, HIOSO_ONU_NAME, max_items=128, timeout=1.0):
+                        suff = itm["oid"][len(HIOSO_ONU_NAME):].strip(".")
+                        if itm.get("value"):
+                            name_map[suff] = str(itm["value"]).strip()
+                except Exception:
+                    pass
+                try:
+                    for itm in snmp_walk(host, port, community, HIOSO_OPT_RX, max_items=128, timeout=1.0):
+                        suff = itm["oid"][len(HIOSO_OPT_RX):].strip(".")
+                        raw_v = str(itm.get("value") or "").strip()
+                        m = re.search(r'(-?\d+(?:\.\d+)?)', raw_v)
+                        if m:
+                            rx_val = round(float(m.group(1)), 2)
+                            opt_map[suff] = rx_val
+                            dev_p = suff.split(".")[0]
+                            opt_map[dev_p] = rx_val
+                except Exception:
+                    pass
+                try:
+                    for itm in snmp_walk(host, port, community, HIOSO_ONU_STATUS, max_items=128, timeout=1.0):
+                        suff = itm["oid"][len(HIOSO_ONU_STATUS):].strip(".")
+                        status_map[suff] = itm.get("value")
+                except Exception:
+                    pass
 
             if is_nscrtv:
                 try:
